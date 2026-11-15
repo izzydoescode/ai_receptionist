@@ -29,7 +29,7 @@ Caller ──PSTN──> Twilio number ──(ElevenLabs native Twilio integrati
 | Time | Task |
 |---|---|
 | 12:00-12:30 | Check in, claim ElevenLabs Creator and Mel credits. Create the GitHub repo and push this kit **through Mel** so your first commit shows up in Mel history |
-| 12:30-1:15 | Backend: in Mel, run `cd backend && python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt && uvicorn main:app --reload --port 8000`. Then run `ngrok http 8000` and `python tools/make_tools.py https://<id>.ngrok-free.app`. Check `curl https://<id>.ngrok-free.app/health` |
+| 12:30-1:15 | Backend: see **Run the backend locally** below (`uvicorn --factory main:create_app`, with `TOOL_SECRET` and `ADMIN_PASSWORD` set). Then run `ngrok http 8000` and `python tools/make_tools.py https://<id>.ngrok-free.app`. Check `curl https://<id>.ngrok-free.app/health` |
 | 1:15-2:15 | ElevenLabs: create the agent (Blank) and paste `agent/system_prompt.md`. Add the first message, add the es and fr languages with their first messages, and turn on the language_detection and end_call tools. Add the 4 webhook tools from `tools/*.json` (or `ELEVENLABS_API_KEY=... python tools/create_tools_via_api.py`). Set the timezone to America/New_York. Use **Test AI agent** in the browser |
 | 2:15-3:00 | Voices: audition library voices or use Voice Design (`agent/agent_config_notes.md`). Assign the EN gruff voice and the es/fr voices |
 | 3:00-3:30 | Lunch (Gratitude Luncheon). Network, and ask the ElevenLabs folks about Kreyòl |
@@ -51,21 +51,59 @@ Caller ──PSTN──> Twilio number ──(ElevenLabs native Twilio integrati
 - Note: the Language doc says a language picked in the widget stays fixed for the call, while the language_detection tool switches languages based on what the caller says. Test switching on a real phone call.
 
 ## Demo script (90 seconds, live call on speaker plus /admin on the projector)
-1. **Status (EN):** "Hey, it's Carlos, is my Malibu ready?" Bear checks the RO and says it's waiting on the wheel bearing, ready tomorrow by 3, around $480.
+1. **Status (EN):** "Hey, it's Carlos Rivera, is my Malibu ready? The number on the ticket is 305-555-0101." Bear verifies last name + phone (or RO 1001) and says it's waiting on the wheel bearing, ready tomorrow by 3, around $480. Last name alone is not enough; Bear will ask for the phone or RO number.
 2. **Booking (ES):** "Hola, necesito cambiar los frenos de mi Altima el lunes a las nueve." Bear switches to Spanish and books it. **The row appears on /admin live.**
 3. **Tow:** "My car's smoking on I-95 near exit 12." Bear asks about safety first and gives the 911 advice, then logs the tow, which shows up on /admin.
 4. **Kreyòl:** "Bonjou, mwen bezwen yon estimasyon pou pòt machin mwen." Bear switches to French and takes a message flagged for a Kreyòl callback. Say: "Native Creole is next, and here's the plan."
 5. **Transfer:** "Let me talk to the owner." Bear does a warm transfer to your phone, which rings in your pocket. Big finish.
 
-Reset between runs: `curl -X POST localhost:8000/admin/reset`
+Reset between runs (only when `BEAR_ENV=dev`): `curl -u "admin:$ADMIN_PASSWORD" -X POST localhost:8000/admin/reset`
 
 ## Files
-- `backend/main.py`, `backend/requirements.txt`: FastAPI tool server with a mock data store (`data.json` is created on first run)
+- `backend/main.py`, `backend/requirements.txt`, `backend/requirements-dev.txt`: FastAPI tool server (`create_app()` factory) with a mock data store (`data.json` is created on first run)
+- `tests/`: pytest suite (auth, admin escaping, repair-status verification, tool behaviour, tool scripts)
+- `.env.example`: every environment variable with placeholder values
 - `tools/*.json`: ElevenLabs webhook tool configs. `make_tools.py` regenerates them with your ngrok URL, and `create_tools_via_api.py` is an optional API upload (not tested, since there was no key)
 - `agent/system_prompt.md`: persona, language rules, the 6 call flows, guardrails, and first messages in EN/ES/FR/HT
 - `agent/agent_config_notes.md`: settings, voice picking, Voice Design prompts, transfer rule
 
 ## To Do
 ElevenLabs account and API key (claim the hackathon credits) · Mel account (required for judging) · Twilio account, number purchase, and SID/token or API key · ngrok account and authtoken (`ngrok config add-authtoken …`) · a GitHub repo · your cell number for transfers · the shop owner's OK before using any real shop name or data · a native Kreyòl speaker to proofread the HT lines.
-Optional backend security: `export TOOL_SECRET=somethinglong`, then add an `X-Tool-Secret` secret header to each tool.
+Backend security is **required**, not optional: the backend refuses to start without a `TOOL_SECRET` of 32+ characters (unless `BEAR_ENV=dev`), and each ElevenLabs webhook tool must send it as an `X-Tool-Secret` **Secret** header.
+
+## Run the backend locally
+Requires Python 3.11+ (tested on 3.13).
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -r backend/requirements-dev.txt        # runtime deps + pytest, pytest-cov, httpx
+cp .env.example .env                               # then replace both CHANGE_ME values; never commit .env
+set -a && . ./.env && set +a                       # load the variables into this shell
+cd backend && uvicorn --factory main:create_app --reload --port 8000
+```
+
+`main:app` no longer exists. The app is built by the `create_app()` factory, which reads settings when it starts. With the `CHANGE_ME` placeholder still in place it refuses to start (the secret is too short), which is on purpose.
+
+### Environment
+| Variable | Required | Default | What it does |
+|---|---|---|---|
+| `TOOL_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret every `/tools/*` call must send in `X-Tool-Secret`. Min 32 chars. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
+| `ADMIN_USER` | no | `admin` | HTTP Basic username for `/admin`. |
+| `ADMIN_PASSWORD` | for `/admin` | none | HTTP Basic password. If unset, `/admin` returns 503. |
+| `BEAR_ENV` | no | none | Set to `dev` for local hacking: allows starting without `TOOL_SECRET` (tools are then open, with a warning) and enables `POST /admin/reset`. Never set it in production. |
+| `DATA_FILE` | no | `backend/data.json` | Mock JSON data store (created with 4 demo repair orders on first use). Replaced by a real DB in PLAN Task 5. |
+| `SHOP_NAME` | no | `Vice City Auto` | Shop name shown on the board and used as the default tow destination. |
+| `SHOP_TZ` | no | `America/New_York` | Shop time zone for slots and timestamps. |
+
+Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `GET /admin` (HTTP Basic), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or RO number** on the ticket.
+
+## Run the tests
+From the repo root, with the dev requirements installed:
+
+```bash
+python -m pytest                                   # whole suite (config in pyproject.toml)
+python -m pytest --cov --cov-report=term-missing   # with coverage for backend/ and tools/
+```
+
+The tests use only dummy secrets and temp data files. They never call the network or write into `tools/`.
 Compliance note for real deployment: Florida requires all-party consent to record calls (Fla. Stat. 934.03), which is why the greeting says "calls may be recorded." Bear also tells callers it's an AI.
