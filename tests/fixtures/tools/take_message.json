@@ -9,7 +9,7 @@
     "request_headers": {
       "Content-Type": "application/json",
       "X-Tool-Secret": {
-        "secret_id": "sec_fixture"
+        "secret_id": "YOUR-TOOL-SECRET-ID"
       },
       "X-Conversation-Id": {
         "variable_name": "system__conversation_id"
