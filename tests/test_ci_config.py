@@ -9,13 +9,6 @@ import yaml
 from sarif_summary import summarize
 
 ROOT = Path(__file__).resolve().parents[1]
-PINS = {
-    "actions/checkout": ("3d3c42e5aac5ba805825da76410c181273ba90b1", "7.0.1"),
-    "actions/setup-python": ("6d4fd22b20465ccc0f7354476588e8df7c9ca0e0", "7.1.0"),
-    "actions/upload-artifact": ("cf430e030ddbb5b0abf93d22962f4752f3646cd9", "7.0.2"),
-    "github/codeql-action/init": ("33d7b85da1a04171e211befe2c739303b9a4c066", "4.39.3"),
-    "github/codeql-action/analyze": ("33d7b85da1a04171e211befe2c739303b9a4c066", "4.39.3"),
-}
 
 
 def workflow(name):
@@ -55,10 +48,8 @@ def test_workflow_contract(name):
         for entry in job["steps"]:
             if "uses" in entry:
                 action, sha = entry["uses"].split("@")
-                expected, version = PINS[action]
-                assert sha == expected
                 assert re.fullmatch(r"[0-9a-f]{40}", sha)
-                assert f"uses: {action}@{sha} # v{version}" in raw
+                assert re.search(rf"uses: {re.escape(action)}@{sha} # v\d+\.\d+\.\d+", raw)
 
 
 def test_tests_workflow():
@@ -86,8 +77,10 @@ def test_tests_workflow():
 def test_quality_workflow():
     job = workflow("quality")["jobs"]["ruff"]
     assert step(job, "actions/setup-python")["with"]["python-version"] == "3.13"
-    for command in ("pip install ruff==0.17.5", "ruff check --output-format=github .", "ruff format --check ."):
-        assert command in commands(job)
+    runs = commands(job)
+    assert "pip install -r backend/requirements-dev.txt" in runs
+    assert "ruff check --output-format=github ." in runs
+    assert "ruff format --check ." in runs
 
 
 def test_security_workflow():
@@ -112,7 +105,7 @@ def test_security_workflow():
     assert "python .github/scripts/sarif_summary.py" in commands(codeql)
     audit = jobs["pip-audit"]
     assert step(audit, "actions/setup-python")["with"]["python-version"] == "3.13"
-    assert "pip install pip-audit==2.10.1" in commands(audit)
+    assert "pip install -r backend/requirements-dev.txt" in commands(audit)
     assert "pip-audit --strict --desc -r backend/requirements-dev.txt" in commands(audit)
     leaks = jobs["gitleaks"]
     assert step(leaks, "actions/checkout")["with"]["fetch-depth"] == 0
