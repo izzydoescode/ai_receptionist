@@ -243,3 +243,29 @@ def test_audit_events_contain_no_pii(store, engine):
     for row in events:
         assert set(row) == {"id", "shop_id", "public_id", "created_at", "event", "entity_public_id", "outcome"}
         assert all(value not in str(column) for column in row.values() for value in private)
+
+
+@pytest.mark.parametrize("operation", ["book", "tow", "message", "audit"])
+def test_public_id_collision_retries_with_new_id(store, engine, monkeypatch, operation):
+    """A 6-hex public id collides by chance after a few thousand rows; callers must not see it."""
+    import bear.store
+
+    first = {
+        "book": lambda: store.book_appointment(SHOP, SLOT, 2, **APPOINTMENT),
+        "tow": lambda: store.create_tow(SHOP, **TOW),
+        "message": lambda: store.create_message(SHOP, **MESSAGE),
+        "audit": lambda: store.record_audit(SHOP, "repair_status.lookup", outcome="failed"),
+    }[operation]
+    # First call uses ABC123 (+ ABC124 for its audit row); the second call's
+    # first try collides with ABC123 and must retry with a fresh id.
+    sequence = (
+        ["ABC123", "ABC123", "DEF456"] if operation == "audit" else ["ABC123", "ABC124", "ABC123", "DEF456", "DEF457"]
+    )
+    ids = iter(sequence)
+    monkeypatch.setattr(bear.store.secrets, "token_hex", lambda n: next(ids))
+    first()
+    second = first()
+    assert second["public_id"][1:] == "DEF456"
+    if operation == "book":
+        assert second["bay"] == 2
+    assert len({row["public_id"] for row in audit_rows(engine)}) == len(audit_rows(engine))
