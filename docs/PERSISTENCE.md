@@ -11,7 +11,7 @@
 - `bear.db.normalize_database_url(url)`: `postgres://...` and `postgresql://...` become `postgresql+psycopg://...` (query string such as `?sslmode=require` preserved); `postgresql+psycopg://` and `sqlite://` URLs unchanged; empty or other schemes -> ValueError.
 - `bear.db.make_engine(url)`: normalizes; for SQLite: `check_same_thread=False`, `timeout=30`, and transactions begin with `BEGIN IMMEDIATE` (event listeners, so concurrent writers serialize instead of erroring); for Postgres: `pool_pre_ping=True` (Neon suspends idle computes).
 - `bear.db.create_schema(engine)` = metadata.create_all (used by tests/dev); production uses Alembic.
-- `SHOP_ID` env (default `vice-city-auto`; must match `^[a-z0-9][a-z0-9-]{0,63}$` else RuntimeError at create_app). Tools write/read with this shop_id until Task 7 brings per-shop config.
+- `SHOP_ID` env (default `vice-city-auto`; must match `^[a-z0-9][a-z0-9-]{0,63}$` else RuntimeError at create_app). Since Task 7 this is the default shop: tools use it when the body has no `shop_id`, and it must have a file in `SHOPS_DIR` (see `docs/SHOPS.md`).
 - `create_app()` builds the engine from DATABASE_URL and `app.state.store = Store(engine, write_guard=<deadline check>)`. If any of the 5 tables is missing it raises `RuntimeError` whose message contains `alembic upgrade head`. It does NOT create tables or seed data.
 - Secrets: DATABASE_URL may contain a password; it must never be logged or included in error messages (RuntimeError text must not contain the URL).
 
@@ -38,13 +38,13 @@ Every table: integer PK `id`, `shop_id` (String(64), indexed, not null), `public
 - `python -m bear.seed --demo [--shop SHOP_ID]` (run from backend/) upserts the 4 demo repair orders for the shop (default `vice-city-auto`), idempotent, prints a one-line count without PII. `bear.seed.main(argv) -> int`; no `--demo` -> usage error (SystemExit 2 from argparse). Uses DATABASE_URL; requires the schema (clear error mentioning `alembic upgrade head` otherwise).
 
 ## Endpoint behaviour (unchanged responses unless stated)
-- book_appointment: slot rules as today (BAYS_PER_SLOT=2 per hour slot); full slot -> same `booked: False` "That slot is full." response with alternatives computed from `booked_counts`. Confirmation = appointment public_id.
+- book_appointment: slot rules from the shop config (hours, holidays, `slot_minutes`, `bays_per_slot`; Task 7); full slot -> same `booked: False` "That slot is full." response with alternatives computed from `booked_counts`. Confirmation = appointment public_id.
 - tickets for tows/messages = public_id.
-- check_repair_status: same verification logic over `list_repair_orders(settings.shop_id)`, plus audit.
+- check_repair_status: same verification logic over `list_repair_orders(shop_id)` for the resolved shop, plus audit.
 - Deadline: the write_guard raises the private deadline exception when the request deadline has passed, so a timed-out write never commits.
 
 ## Task 6 admin board
-- `GET /admin?shop=<shop_id>` (default settings.shop_id; invalid pattern -> 400 `{"detail": "invalid shop"}`), Basic auth unchanged, everything html-escaped. Shows `store.board(shop, 50)`.
+- `GET /admin?shop=<shop_id>` (default settings.shop_id; invalid pattern -> 400 `{"detail": "invalid shop"}`; no shop file -> 404 `{"detail": "unknown shop"}`), Basic auth unchanged, everything html-escaped. Shows `store.board(shop, 50)`.
 - Columns: Appointments: id(public_id), when (slot_start), customer_name, phone, vehicle, service, language. Tows: id, created, customer_name, phone, pickup_location, issue, is_safe. Messages: id, created, caller_name, phone, reason, urgency, callback_language. Repair orders: ro, customer, vehicle, status, eta.
-- Timestamps rendered in the shop TZ (settings.shop_tz) as `YYYY-MM-DD HH:MM TZ` e.g. `2026-11-16 10:00 EST`.
-- Title/heading still use settings.shop_name; the board shows only the requested shop's rows.
+- Timestamps rendered in the requested shop's `timezone` from its config as `YYYY-MM-DD HH:MM TZ` e.g. `2026-11-16 10:00 EST`.
+- Title/heading use the requested shop's `name`; the board shows only the requested shop's rows.

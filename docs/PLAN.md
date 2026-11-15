@@ -113,11 +113,11 @@ Acceptance: snapshot-style test of the rendered table rows, and a test that shop
 - *Every write runs a `write_guard` just before commit, so a timed-out request rolls back.*
 - *Audit events record only event, id and outcome, with no PII.*
 - *The app never creates or seeds tables; run `alembic upgrade head` and optionally `python -m bear.seed --demo`.*
-- *`/admin?shop=` uses one admin credential for every shop until per-shop auth exists. The shop time zone is still the global `SHOP_TZ` until Task 7.*
+- *`/admin?shop=` uses one admin credential for every shop until per-shop auth exists. The shop time zone came from the global `SHOP_TZ` until Task 7, which replaced it with each shop's config.*
 
 ## Phase C: Per-shop config
 
-### Task 7: Shop config schema and loader
+### Task 7: Shop config schema and loader (done on `dev/per-shop-config`)
 - One file per shop at `shops/<shop_id>.yaml`, validated by a Pydantic model and loaded at startup. The app fails fast on invalid config. `SHOPS_DIR` sets the location.
 - Schema:
   - `shop_id`, `name`, `city`, `address`, `timezone`
@@ -139,6 +139,16 @@ Acceptance:
 - Tests load the example.
 - An invalid config (bad phone, duplicate twilio_number, close before open, missing recording notice) fails validation with a readable error.
 - Slot logic follows the config hours, including a holiday.
+
+*Decisions at implementation (full reference in `docs/SHOPS.md`):*
+- *The schema is `bear.shops.ShopConfig`. Unknown keys are rejected. Times must be quoted `"HH:MM"`, because YAML 1.1 reads an unquoted `18:00` as an integer. All seven weekdays are required. `ht_fallback` is a top-level field, and `french` requires `fr` in `languages`.*
+- *Recording notices are checked as substrings, ignoring case and accents: `may be recorded` / `puede ser grabada` / `peut être enregistré`. The example's French greeting gained its notice. `agent/system_prompt.md` is unchanged until Task 10.*
+- *`load_shops()` reports every problem in every file at once. A file's `shop_id` must match its name. Error text never includes input values.*
+- *Slots start at each interval's `open`. A requested time is floored to its slot, and a slot must end by `close`.*
+- *`SHOP_NAME` and `SHOP_TZ` were removed (breaking). `SHOP_ID` is now the default shop and needs a file.*
+- *Tools accept an optional `shop_id` body field. Unknown ids return `unknown_shop` and write nothing, not even audit rows. Task 8 still has to add `shop_id` to the tool configs as a dynamic variable and decide what an unknown number does.*
+- *`/admin?shop=` with no shop file returns 404, and the board uses that shop's name and time zone. There is still one admin credential for all shops.*
+- *PyYAML is now a runtime dependency.*
 
 ### Task 8: ElevenLabs conversation-initiation webhook
 - `POST /elevenlabs/init` is protected by its own `INIT_WEBHOOK_SECRET` header (configured in ElevenLabs Agents settings).

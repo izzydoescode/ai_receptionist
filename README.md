@@ -63,6 +63,7 @@ Reset between runs (only when `BEAR_ENV=dev`): `curl -u "admin:$ADMIN_PASSWORD" 
 - `backend/main.py`, `backend/requirements.txt`, `backend/requirements-dev.txt`: FastAPI tool server (`create_app()` factory) with SQLAlchemy persistence (`backend/bear/`) and Alembic migrations
 - `tests/`: pytest suite (auth, admin escaping, repair-status verification, tool behaviour, tool scripts)
 - `.env.example`: every environment variable with placeholder values
+- `shops/*.yaml`: one config file per shop (hours, holidays, bays, numbers, languages, voices, greetings). See `docs/SHOPS.md`; `vice-city-auto.yaml` is the made-up demo shop
 - `tools/*.json`: ElevenLabs webhook tool configs. `make_tools.py` regenerates them with your ngrok URL, and `create_tools_via_api.py` is an optional API upload (not tested, since there was no key)
 - `agent/system_prompt.md`: persona, language rules, the 6 call flows, guardrails, and first messages in EN/ES/FR/HT
 - `agent/agent_config_notes.md`: settings, voice picking, Voice Design prompts, transfer rule
@@ -109,6 +110,7 @@ Neon (planned production DB): paste Neon's connection string as-is, e.g. `DATABA
 The app requires all five tables at startup and never creates or seeds them automatically. Demo data is optional: `python -m bear.seed --demo --shop vice-city-auto` upserts four repair orders. `/admin?shop=vice-city-auto` selects a shop's newest 50 rows per section. The dev reset clears only the configured shop and reloads its demo orders.
 
 ### Tool responses and input rules
+- Every tool body may include `shop_id` (defaults to `SHOP_ID`); a well-formed id with no shop file returns `200 {"ok": false, "error": "unknown_shop", ...}`.
 - Every tool reply has `ok`. Bad input comes back as `200 {"ok": false, "error": "invalid_input", "field": "...", "message": "<speakable hint>"}` so the agent can re-ask; an unexpected server error is `200 {"ok": false, "error": "internal_error", ...}`; a deadline miss is `error: "timeout"`.
 - Phones are normalized to E.164 (US default, 10 or 11 digits). Dates are `YYYY-MM-DD` within 60 days; times `HH:MM`. Names max 80 chars, free text max 500; control characters are stripped.
 - Before auth runs, `/tools/*` requires `Content-Type: application/json` (else 415), a body of at most 16 KB (else 413) and a JSON object (else 400).
