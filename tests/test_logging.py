@@ -249,6 +249,7 @@ def test_request_json_written_to_stdout(tmp_path):
         **os.environ,
         "PYTHONPATH": str(ROOT / "backend"),
         "TOOL_SECRET": "x" * 40,
+        "INIT_WEBHOOK_SECRET": "y" * 40,
         "DATABASE_URL": f"sqlite:///{tmp_path}/stdout.db",
     }
     env.pop("TOOL_DEADLINE_MS", None)

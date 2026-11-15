@@ -78,7 +78,7 @@ Requires Python 3.11+ (tested on 3.13).
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -r backend/requirements-dev.txt        # runtime deps + pytest, pytest-cov, httpx
-cp .env.example .env                               # then replace both CHANGE_ME values; never commit .env
+cp .env.example .env                               # then replace every CHANGE_ME value; never commit .env
 set -a && . ./.env && set +a                       # load the variables into this shell
 cd backend
 alembic upgrade head                              # required before app startup
@@ -92,6 +92,7 @@ uvicorn --factory main:create_app --reload --port 8000 --no-access-log
 | Variable | Required | Default | What it does |
 |---|---|---|---|
 | `TOOL_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret every `/tools/*` call must send in `X-Tool-Secret`. Min 32 chars. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
+| `INIT_WEBHOOK_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret ElevenLabs must send in `X-Init-Webhook-Secret` to `POST /elevenlabs/init`. Min 32 chars and different from `TOOL_SECRET`. |
 | `ADMIN_USER` | no | `admin` | HTTP Basic username for `/admin`. |
 | `ADMIN_PASSWORD` | for `/admin` | none | HTTP Basic password. If unset, `/admin` returns 503. |
 | `BEAR_ENV` | no | none | Set to `dev` for local hacking: allows starting without `TOOL_SECRET` (tools are then open, with a warning) and enables `POST /admin/reset`. Never set it in production. |

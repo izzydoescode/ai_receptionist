@@ -52,6 +52,7 @@ class Settings:
     database_url: str
     shop_id: str
     shops_dir: str = str(DEFAULT_SHOPS_DIR)
+    init_webhook_secret: str = ""
     tool_deadline_ms: int = 4000
     admin_user: str = "admin"
 
@@ -66,6 +67,7 @@ class Settings:
         return cls(
             tool_deadline_ms=deadline_ms,
             tool_secret=os.getenv("TOOL_SECRET", ""),
+            init_webhook_secret=os.getenv("INIT_WEBHOOK_SECRET", ""),
             env=os.getenv("BEAR_ENV", ""),
             admin_user=os.getenv("ADMIN_USER", "admin"),
             admin_password=os.getenv("ADMIN_PASSWORD", ""),
@@ -439,6 +441,14 @@ def create_app() -> FastAPI:
         raise RuntimeError("TOOL_SECRET must be set to at least 32 characters (or set BEAR_ENV=dev for local testing)")
     if not settings.tool_secret:
         logging.getLogger("bear").warning("TOOL_SECRET is unset; tool authentication is disabled in dev")
+    if settings.env != "dev" and len(settings.init_webhook_secret) < 32:
+        raise RuntimeError(
+            "INIT_WEBHOOK_SECRET must be set to at least 32 characters (or set BEAR_ENV=dev for local testing)"
+        )
+    if settings.init_webhook_secret and settings.init_webhook_secret == settings.tool_secret:
+        raise RuntimeError("INIT_WEBHOOK_SECRET must differ from TOOL_SECRET")
+    if not settings.init_webhook_secret:
+        logging.getLogger("bear").warning("INIT_WEBHOOK_SECRET is unset; the init webhook is open in dev")
 
     if not re.fullmatch(SHOP_ID_PATTERN, settings.shop_id):
         raise RuntimeError("invalid SHOP_ID")
