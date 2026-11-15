@@ -3,7 +3,7 @@
 ElevenLabs calls `POST /elevenlabs/init` while an inbound Twilio call is still ringing. The backend uses the number that was dialed to find the shop, then returns that shop's greeting, language, voice and prompt variables. The call never has to hard-code a shop.
 
 ## Request
-- Header: `X-Init-Webhook-Secret: <INIT_WEBHOOK_SECRET>`, checked with a constant-time compare. If it's missing or wrong, the backend returns `401`. `TOOL_SECRET` is not accepted here.
+- Header: `X-Init-Webhook-Secret: <INIT_WEBHOOK_SECRET>`, checked with a constant-time compare. If it's missing or wrong, the backend returns `401`. `TOOL_SECRET` is not accepted here. During rotation, `INIT_WEBHOOK_SECRET_PREVIOUS` is also accepted so you can update ElevenLabs and the server in either order.
 - Body (JSON, 16 KB max): `caller_id`, `called_number`, `agent_id`, `call_sid`, `conversation_id`. All of them are strings and all are optional. Unknown fields, such as `call_id` and `sip_headers` on SIP calls, are ignored. Invalid JSON, or a non-string value, returns `400`. A body over 16 KB returns `413`.
 - `called_number` is normalized to E.164 and matched against each shop's `twilio_number`.
 
@@ -38,7 +38,7 @@ The language used is the first one in the shop's `languages` list. `bear.initiat
 `callback_text` comes from the shop's `callback_languages` (`docs/SHOPS.md`). It names the languages staff can call back in, and it carries the Kreyòl bridge line: the version that promises a Kreyòl-speaking callback only if `ht` is listed, and otherwise one that just says the shop will call back. Unknown numbers get English only.
 
 **Unknown number.** If no shop owns the dialed number, the response uses `shop_id: "unknown"` and neutral wording (no shop name). The English greeting includes the recording notice, there is no voice override, and `features_text` tells the agent it can only take a message. On those calls:
-- `take_message` files messages under `unknown`, and they show up at `/admin?shop=unknown`.
+- `take_message` files messages under `unknown`, and they show up at `/admin?shop=unknown`. The tool also accepts a `conversation_id` dynamic variable (not filled by the LLM) so staff can find the call in the ElevenLabs dashboard without storing the dialed number.
 - Every other tool returns `unknown_shop` and writes nothing.
 
 **Timing.** ElevenLabs fetches this during the ring, and a failed or slow webhook can keep the call from starting. Our target is under 300 ms. The handler only does an in-memory lookup, and a test keeps 30 in-process calls under 300 ms each.
@@ -59,3 +59,4 @@ Sources: [Twilio personalization](https://elevenlabs.io/docs/agents-platform/cus
    - Don't enable the system prompt override. We don't send it.
 3. **Agent → Dynamic variables:** add placeholders for `shop_id`, `shop_name`, `shop_city`, `shop_address`, `hours_text`, `services_text`, `persona_name`, `features_text`, `shop_timezone`, `languages_text`, `call_start_local` and `callback_text`. Use `vice-city-auto` and the demo values. Preview and simulation tests don't call the webhook, so without placeholders those variables stay as literal `{{...}}` text.
 4. **Tools:** re-create the four webhook tools from the regenerated `tools/*.json`. Each now has a required `shop_id` body parameter whose value type is **Dynamic variable** `shop_id`, so the LLM never fills it in.
+5. **Confirm on the live agent:** after re-creating the tools, open each tool's parameter list in the ElevenLabs UI and check that `shop_id` is a dynamic variable, not an LLM-filled field.

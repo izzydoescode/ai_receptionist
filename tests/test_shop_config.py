@@ -135,6 +135,18 @@ def test_recording_notice_match_ignores_case_and_accents():
     assert ShopConfig.model_validate(data).first_messages["fr"].startswith("Bonjour")
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Gracias por llamar a Demo Shop. Las llamadas pueden ser grabadas. ¿En qué le puedo ayudar?",
+        "Gracias por llamar a Demo Shop. Esta llamada se puede grabar. ¿En qué le puedo ayudar?",
+    ],
+)
+def test_spanish_recording_notice_accepts_natural_variants(message):
+    data = config(languages=["es"], voices={"es": "PLACEHOLDER_VOICE_ES"}, first_messages={"es": message})
+    assert ShopConfig.model_validate(data).first_messages["es"] == message
+
+
 @pytest.mark.parametrize("field", ["voices", "first_messages"])
 def test_each_language_needs_voice_and_first_message(field):
     data = config()
