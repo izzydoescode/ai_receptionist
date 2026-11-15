@@ -1,0 +1,21 @@
+name: en_book
+language: en
+description: Caller books an oil change for next Monday at 10 AM.
+calls:
+  - tool: book_appointment
+    args:
+      customer_name: Jordan Lee
+      phone: "3055550142"
+      vehicle: 2018 Toyota Corolla
+      service: oil change and tire rotation
+      preferred_date: "{next_monday}"
+      preferred_time: "10:00"
+    expect: {ok: true, booked: true}
+    expect_contains: {message: Bring the keys, when: Monday}
+db_counts: {appointments: 1}
+db:
+  appointments:
+    - {customer_name: Jordan Lee, service: oil change and tire rotation, language: en}
+audit:
+  - {event: appointment.booked}
+admin_contains: [Jordan Lee, oil change and tire rotation]
