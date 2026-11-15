@@ -64,6 +64,7 @@ def test_exact_board_rows(make_client):
                 "Private callback",
                 "normal",
                 "en",
+                "",
             )
         ],
         [cells("9001", "Zelda Quixote", "Demo sedan", "ready", "Tomorrow")],

@@ -40,6 +40,10 @@
         "shop_id": {
           "type": "string",
           "dynamic_variable": "shop_id"
+        },
+        "conversation_id": {
+          "type": "string",
+          "dynamic_variable": "conversation_id"
         }
       },
       "required": [

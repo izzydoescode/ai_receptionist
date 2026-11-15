@@ -20,7 +20,7 @@ Every table: integer PK `id`, `shop_id` (String(64), indexed, not null), `public
 - `repair_orders`: ro_number (String(20)), customer_name, phone (E.164), plate, vehicle, status, note, eta, balance_estimate, updated_at (UTC). UNIQUE(shop_id, ro_number).
 - `appointments`: slot_start (UTC), bay (int >=1), customer_name, phone, vehicle, service, language, notes (nullable). UNIQUE(shop_id, slot_start, bay) named `uq_appointments_shop_slot_bay`.
 - `tows`: customer_name, phone, pickup_location, vehicle, issue, is_safe (bool), destination, language, status.
-- `messages`: caller_name, phone, reason, urgency, callback_language, vehicle (nullable).
+- `messages`: caller_name, phone, reason, urgency, callback_language, vehicle (nullable), conversation_id (nullable).
 - `audit_events`: event (String(64)), entity_public_id (nullable), outcome (nullable String(32)). No PII columns.
 
 ## Store API (`bear.store.Store`), all methods return plain dicts (column -> value) or lists of them
@@ -45,6 +45,6 @@ Every table: integer PK `id`, `shop_id` (String(64), indexed, not null), `public
 
 ## Task 6 admin board
 - `GET /admin?shop=<shop_id>` (default settings.shop_id; invalid pattern -> 400 `{"detail": "invalid shop"}`; no shop file -> 404 `{"detail": "unknown shop"}`), Basic auth unchanged, everything html-escaped. Shows `store.board(shop, 50)`.
-- Columns: Appointments: id(public_id), when (slot_start), customer_name, phone, vehicle, service, language. Tows: id, created, customer_name, phone, pickup_location, issue, is_safe. Messages: id, created, caller_name, phone, vehicle, reason, urgency, callback_language. Repair orders: ro, customer, vehicle, status, eta.
+- Columns: Appointments: id(public_id), when (slot_start), customer_name, phone, vehicle, service, language. Tows: id, created, customer_name, phone, pickup_location, issue, is_safe. Messages: id, created, caller_name, phone, vehicle, reason, urgency, callback_language, conversation_id. Repair orders: ro, customer, vehicle, status, eta.
 - Timestamps rendered in the requested shop's `timezone` from its config as `YYYY-MM-DD HH:MM TZ` e.g. `2026-11-16 10:00 EST`.
 - Title/heading use the requested shop's `name`; the board shows only the requested shop's rows.

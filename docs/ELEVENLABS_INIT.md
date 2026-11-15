@@ -30,7 +30,7 @@ ElevenLabs calls `POST /elevenlabs/init` while an inbound Twilio call is still r
 The language used is the first one in the shop's `languages` list. `bear.initiation.InitResponse` is the Pydantic model of this shape, and the tests validate every response against it.
 
 **Unknown number.** If no shop owns the dialed number, the response uses `shop_id: "unknown"` and neutral wording (no shop name). The English greeting includes the recording notice, there is no voice override, and `features_text` tells the agent it can only take a message. On those calls:
-- `take_message` files messages under `unknown`, and they show up at `/admin?shop=unknown`.
+- `take_message` files messages under `unknown`, and they show up at `/admin?shop=unknown`. The tool also accepts a `conversation_id` dynamic variable (not filled by the LLM) so staff can find the call in the ElevenLabs dashboard without storing the dialed number.
 - Every other tool returns `unknown_shop` and writes nothing.
 
 **Timing.** ElevenLabs fetches this during the ring, and a failed or slow webhook can keep the call from starting. Our target is under 300 ms. The handler only does an in-memory lookup, and a test keeps 30 in-process calls under 300 ms each.

@@ -228,6 +228,7 @@ class TakeMessage(ToolRequest):
     urgency: Urgency = "normal"
     callback_language: Language = "en"
     vehicle: OptionalName | None = None
+    conversation_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._-]{1,64}$")
 
 
 def invalid_input(field, message):
@@ -820,7 +821,7 @@ def create_app() -> FastAPI:
     <h1>{html.escape(str(board_name), quote=True)}: AI receptionist live board</h1>
     <h2>Appointments</h2>{table(db["appointments"], ["public_id", "slot_start", "customer_name", "phone", "vehicle", "service", "language"])}
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
-    <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "vehicle", "reason", "urgency", "callback_language"])}
+    <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "vehicle", "reason", "urgency", "callback_language", "conversation_id"])}
     <h2>Open repair orders</h2>{table(db["repair_orders"], ["ro_number", "customer_name", "vehicle", "status", "eta"])}
     </body></html>"""
 

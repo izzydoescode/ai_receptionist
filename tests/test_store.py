@@ -85,7 +85,7 @@ def test_schema_contract(engine):
         "appointments": set(APPOINTMENT) | {"slot_start", "bay"},
         "repair_orders": set(REPAIR) | {"updated_at"},
         "tows": set(TOW),
-        "messages": set(MESSAGE) | {"vehicle"},
+        "messages": set(MESSAGE) | {"vehicle", "conversation_id"},
         "audit_events": {"event", "entity_public_id", "outcome"},
     }
     for table in TABLES:

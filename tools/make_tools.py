@@ -22,6 +22,9 @@ def B(d):
 # Filled by ElevenLabs from the shop_id dynamic variable the init webhook returns (Task 8).
 # A property with dynamic_variable and no description is never shown to the LLM.
 SHOP_ID = {"type": "string", "dynamic_variable": "shop_id"}
+# Filled from the conversation_id dynamic variable so staff can find an unknown-number
+# message in the ElevenLabs dashboard without storing the dialed number.
+CONVERSATION_ID = {"type": "string", "dynamic_variable": "conversation_id"}
 
 ON_FALSE = (
     " If it returns ok=false with invalid_input, re-ask for that field. "
@@ -112,7 +115,11 @@ def main(argv=None, out_dir=None):
                 "request_body_schema": {
                     "type": "object",
                     "description": f"Arguments for {name}",
-                    "properties": {**props, "shop_id": SHOP_ID},
+                    "properties": {
+                        **props,
+                        "shop_id": SHOP_ID,
+                        **({"conversation_id": CONVERSATION_ID} if name == "take_message" else {}),
+                    },
                     "required": [*req, "shop_id"],
                 },
             },
