@@ -194,7 +194,7 @@ Acceptance:
 
 ## Phase D: Prompt and content fixes (can run in parallel with Phase B)
 
-### Task 10: Recording notice and no false promises
+### Task 10: Recording notice and no false promises (done on `dev/recording-notice-and-promises`)
 - French first message: "Bonjour, vous êtes bien chez {{shop_name}}. Je suis {{persona_name}}, l'assistant virtuel. **L'appel peut être enregistré.** Comment puis-je vous aider ?" Remove the mixed-in Kreyòl phrase from the FR message; keep the Kreyòl handling in the flow instructions.
 - Every first message, in config and in the prompt, carries its language's recording notice before anything substantive, per Fla. Stat. 934.03 (all-party consent).
 - Remove the unbuilt promises, or gate them on `features_text`:
@@ -205,6 +205,12 @@ Acceptance:
 - Flag the ES, FR and HT lines for native-speaker review in a `docs/TRANSLATION_REVIEW.md` checklist.
 
 Acceptance: a test checks that every `first_messages` value in each shop config contains its notice ("may be recorded", "puede ser grabada", "peut être enregistré", "ka anrejistre"). Grep tests confirm the banned phrases are gone when their features are off.
+
+*Decisions at implementation:*
+- *The per-feature wording lives in `features_text`: the real promise when a feature is on, and the exact fallback line when it is off. The prompt flows point at it, so a shop with features off never has "text photos", "15 minutes" or "24/7" in its rendered prompt. Tests render the prompt with the webhook's variables, once with every feature off and once with every feature on.*
+- *`request_tow` promises the 15-minute dispatcher only with `tow_dispatch`. Otherwise it relays the fallback line, with the 911 warning still first for unsafe callers. `take_message` says "the shop will call back as soon as possible", with no time promise.*
+- *Shop config validation already required each language's notice (Task 7). The new tests also check that the notice comes before the greeting's question, in `shops/*.yaml` and in the prompt's table (including the HT line, "ka anrejistre"). The demo shop's French greeting now uses the spec wording, "L'appel peut être enregistré".*
+- *Left as is and flagged in `docs/TRANSLATION_REVIEW.md`: the Kreyòl bridge line and the `take_message` replies that promise a Kreyòl- or Spanish-speaking callback. They are only true if the shop has those staff. A per-shop flag for that could come later.*
 
 ## Phase E: Deployment
 
