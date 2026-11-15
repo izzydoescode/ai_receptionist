@@ -162,3 +162,11 @@ def test_secret_value_passed_as_secret_id_is_refused(tmp_path):
 def test_malformed_secret_id_is_refused(tmp_path, secret_id):
     with pytest.raises(SystemExit, match="ELEVENLABS_TOOL_SECRET_ID"):
         load_script("make_tools").main(out_dir=tmp_path, environ={"ELEVENLABS_TOOL_SECRET_ID": secret_id})
+
+
+def test_tools_send_the_conversation_id_header_from_a_system_variable(generated_tools):
+    # The backend logs X-Conversation-Id (Task 4); ElevenLabs fills it per call.
+    for path in generated_tools.glob("*.json"):
+        assert headers_of(generated_tools, path.stem)["X-Conversation-Id"] == {
+            "variable_name": "system__conversation_id"
+        }

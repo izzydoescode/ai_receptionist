@@ -117,7 +117,12 @@ def main(out_dir=None, environ=None):
     out = Path(out_dir) if out_dir is not None else TOOLS_DIR
     environ = os.environ if environ is None else environ
     base = public_base_url(environ)
-    headers = {"Content-Type": "application/json", "X-Tool-Secret": {"secret_id": tool_secret_id(environ)}}
+    headers = {
+        "Content-Type": "application/json",
+        "X-Tool-Secret": {"secret_id": tool_secret_id(environ)},
+        # Lets request logs tie each tool call to its ElevenLabs conversation.
+        "X-Conversation-Id": {"variable_name": "system__conversation_id"},
+    }
     paths = []
     for name, (desc, props, req) in TOOLS.items():
         cfg = {

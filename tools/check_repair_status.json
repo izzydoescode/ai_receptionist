@@ -10,6 +10,9 @@
       "Content-Type": "application/json",
       "X-Tool-Secret": {
         "secret_id": "YOUR-TOOL-SECRET-ID"
+      },
+      "X-Conversation-Id": {
+        "variable_name": "system__conversation_id"
       }
     },
     "request_body_schema": {
