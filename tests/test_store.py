@@ -278,3 +278,32 @@ def test_repair_public_id_collision_retries_with_new_id(store, monkeypatch):
     assert first["public_id"] == "RABC123"
     assert second["public_id"] == "RDEF456"
     assert {row["ro_number"] for row in store.list_repair_orders(SHOP)} == {"9001", "9002"}
+
+
+def test_write_clears_sqlite_begin_on_pooled_connections(store, engine):
+    store.create_message(SHOP, **MESSAGE)
+    connections = [engine.connect() for _ in range(engine.pool.size())]
+    try:
+        assert all("sqlite_begin" not in conn.info for conn in connections)
+    finally:
+        for conn in connections:
+            conn.close()
+
+
+def test_reads_after_a_write_do_not_block_each_other(store, engine):
+    import time
+
+    from sqlalchemy import text
+
+    n = engine.pool.size()
+    with ThreadPoolExecutor(max_workers=n) as pool:
+        list(pool.map(lambda _: store.create_message(SHOP, **MESSAGE), range(n)))
+    holder = engine.connect()
+    try:
+        with holder.begin():
+            holder.execute(text("SELECT 1"))
+            started = time.perf_counter()
+            store.board(SHOP)
+            assert time.perf_counter() - started < 1
+    finally:
+        holder.close()
