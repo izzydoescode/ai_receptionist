@@ -1,5 +1,6 @@
 version: 2
 updates:
+  # pip-compile lockfiles live next to requirements*.txt in /backend.
   - package-ecosystem: pip
     directory: /backend
     schedule:
