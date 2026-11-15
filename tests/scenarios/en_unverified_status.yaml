@@ -1,0 +1,18 @@
+name: en_unverified_status
+language: en
+description: The last name matches a ticket but the phone doesn't. Nothing about the record leaks.
+calls:
+  - tool: check_repair_status
+    args: {last_name: Rivera, phone: "3055550999"}
+    expect:
+      ok: true
+      found: false
+      message: I couldn't verify that repair order. Offer to take a message for the service writer.
+    expect_missing_keys: [ro_number, vehicle, status, eta, estimated_balance, customer_first_name]
+    expect_not_in_response: [Carlos, Malibu, "1001", waiting on parts, $480]
+  - tool: check_repair_status
+    args: {ro_number: "1001"}
+    expect: {ok: true, found: false, needs: [last_name, phone_or_ro_number]}
+    expect_not_in_response: [Carlos, Malibu]
+audit:
+  - {event: repair_status.lookup, outcome: failed}

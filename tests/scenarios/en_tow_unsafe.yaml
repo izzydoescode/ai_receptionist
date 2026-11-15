@@ -1,0 +1,21 @@
+name: en_tow_unsafe
+language: en
+description: Stranded caller on a highway shoulder who isn't safe. The 911 warning comes first, with no dispatch promise.
+calls:
+  - tool: request_tow
+    args:
+      customer_name: Chris Morgan
+      phone: "3055550146"
+      vehicle: 2010 Jeep Wrangler, black
+      pickup_location: I-95 northbound shoulder near exit 4
+      issue: Engine died and smoke from the hood
+      is_safe: false
+    expect: {ok: true, logged: true}
+    expect_contains: {message: "Caller may be unsafe: tell them to call 911 now"}
+    expect_not_in_response: [15 minutes, dispatcher]
+db:
+  tows:
+    - {customer_name: Chris Morgan, is_safe: false, status: dispatch_requested, language: en, destination: Vice City Auto}
+audit:
+  - {event: tow.requested}
+admin_contains: [Chris Morgan, I-95 northbound shoulder near exit 4]
