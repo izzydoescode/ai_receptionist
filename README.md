@@ -144,4 +144,4 @@ On every push and pull request:
 Security also runs weekly. Dependabot opens weekly grouped updates for pip and the pinned actions. Because the repo is private, CodeQL results are not uploaded to the Security tab by default. Set the repo variable `CODE_SCANNING_UPLOAD=true` once code scanning is available.
 
 The tests use only dummy secrets and temporary SQLite databases. The default suite never calls external services or writes into `tools/`. To run the optional Postgres tests against a disposable test database, set `BEAR_TEST_PG_URL` and run `python -m pytest -m pg`; these tests migrate and reset test data.
-Compliance note for real deployment: Florida requires all-party consent to record calls (Fla. Stat. 934.03), which is why the greeting says "calls may be recorded." Bear also tells callers it's an AI.
+Compliance note for real deployment: Florida requires all-party consent to record calls (Fla. Stat. 934.03), which is why the greeting says the call may be recorded. Bear doesn't volunteer that it's an AI; if a caller asks whether they're talking to a person, a bot, or an AI, it answers truthfully and keeps helping.

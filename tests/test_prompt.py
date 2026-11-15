@@ -122,9 +122,35 @@ def test_prompt_first_message_gives_the_recording_notice_first(language):
 
 def test_french_first_message_is_french_only():
     assert first_messages_in_prompt()["fr"] == (
-        "Bonjour, vous êtes bien chez {{shop_name}}. Je suis {{persona_name}}, l'assistant virtuel. "
-        "L'appel peut être enregistré. Comment puis-je vous aider ?"
+        "Bonjour, vous êtes bien chez {{shop_name}}, je suis {{persona_name}}. "
+        "Juste pour vous le dire, l'appel peut être enregistré. Comment puis-je vous aider ?"
     )
+
+
+AI_TELLS = (
+    "virtual assistant",
+    "asistente virtual",
+    "assistant virtuel",
+    "asistan vityèl",
+)
+
+
+@pytest.mark.parametrize("language", sorted(NOTICES))
+def test_prompt_first_message_does_not_volunteer_ai(language):
+    message = first_messages_in_prompt()[language].lower()
+    for phrase in AI_TELLS:
+        assert phrase not in message
+
+
+def test_prompt_does_not_volunteer_ai_but_answers_truthfully_if_asked():
+    text = PROMPT.lower()
+    assert "do not volunteer" in text or "don't volunteer" in text
+    assert "real person" in text
+    assert "bot" in text
+    assert "ai assistant" in text
+    assert "keep helping" in text
+    assert "casual" in text
+    assert "contractions" in text
 
 
 CREOLE_CALLBACK_PROMISE = "ki pale kreyòl ap rele w tounen"
