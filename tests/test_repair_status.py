@@ -178,6 +178,16 @@ def test_verified_status_has_only_public_fields(client, tool_headers, payload, r
         assert private_value not in serialized
 
 
+def test_last_name_strips_format_characters(client, tool_headers):
+    response = lookup(client, tool_headers, {"last_name": "Ri\u200bvera", "ro_number": "1001"})
+    assert response.json()["found"] is True
+    assert response.json()["customer_first_name"] == "Carlos"
+
+
+def test_last_name_of_only_format_characters_is_treated_as_missing(client, tool_headers):
+    assert lookup(client, tool_headers, {"last_name": "  \u200b\u202e  ", "ro_number": "1001"}).json() == NEED
+
+
 def test_generator_repair_status_schema_requires_last_name():
     description, properties, required = load_script("make_tools").TOOLS["check_repair_status"]
     assert set(properties) == {"last_name", "phone", "ro_number"}

@@ -77,6 +77,53 @@ def test_phone_normalized(client, tool_headers, payloads, tool, phone):
     assert accept(client, tool_headers, payloads, tool, phone=phone)["phone"] == "+13055550199"
 
 
+@pytest.mark.parametrize("tool", WRITE_TOOLS)
+@pytest.mark.parametrize(
+    "phone",
+    ["000-000-0000", "0005550199", "111-555-1234", "305-055-1234", "305-155-1234", "+1 000 555 0100"],
+)
+def test_invalid_nanp_numbers_are_rejected(client, tool_headers, payloads, tool, phone):
+    reject(client, tool_headers, payloads, tool, "phone", phone, "10-digit")
+
+
+@pytest.mark.parametrize("tool", WRITE_TOOLS)
+@pytest.mark.parametrize("phone,stored", [("+509 3412 3456", "+50934123456"), ("+44 20 7946 0958", "+442079460958")])
+def test_international_e164_numbers_are_accepted(client, tool_headers, payloads, tool, phone, stored):
+    assert accept(client, tool_headers, payloads, tool, phone=phone)["phone"] == stored
+
+
+@pytest.mark.parametrize("tool", WRITE_TOOLS)
+@pytest.mark.parametrize("phone", ["+1234567", "+12345678", "+1234567890123456", "50934123456"])
+def test_international_numbers_need_plus_and_valid_length(client, tool_headers, payloads, tool, phone):
+    reject(client, tool_headers, payloads, tool, "phone", phone)
+
+
+@pytest.mark.parametrize("tool", WRITE_TOOLS)
+@pytest.mark.parametrize("phone", ["+0123456789", "+0 123 456 789", "+00000000"])
+def test_e164_country_code_cannot_start_with_zero(client, tool_headers, payloads, tool, phone):
+    reject(client, tool_headers, payloads, tool, "phone", phone)
+
+
+@pytest.mark.parametrize("tool", WRITE_TOOLS)
+@pytest.mark.parametrize(
+    "phone",
+    [
+        "+509-3412-3456 ext 4",
+        "+509-3412-3456 ext. 4",
+        "+509-3412-3456 x4",
+        "+509-3412-3456#4",
+        "+509-3412-3456 extension 4",
+        "305-555-0199 EXT 4",
+        "(305) 555-0199 Ext. 12",
+        "305-555-0199 x 12",
+        "3055550199#4",
+        "13055550199 Extension 4",
+    ],
+)
+def test_phone_extensions_are_rejected(client, tool_headers, payloads, tool, phone):
+    reject(client, tool_headers, payloads, tool, "phone", phone, "without the extension")
+
+
 @pytest.mark.parametrize("field,limit", [("phone", 32), ("ro_number", 20), ("last_name", 80)])
 def test_repair_factor_max_length(client, tool_headers, payloads, field, limit):
     reject(client, tool_headers, payloads, "check_repair_status", field, "x" * (limit + 1))
@@ -202,6 +249,45 @@ def test_text_limit_after_strip(client, tool_headers, payloads, tool, field, lim
 def test_controls_cleaned(client, tool_headers, payloads, tool, field, limit, control):
     value = f"  Ana{control} \t[31mGomez\x00 "
     assert accept(client, tool_headers, payloads, tool, **{field: value})[field] == "Ana [31mGomez"
+
+
+FORMAT_CHARS = [
+    "\u200b",  # ZERO WIDTH SPACE
+    "\u200e",  # LEFT-TO-RIGHT MARK
+    "\u200f",  # RIGHT-TO-LEFT MARK
+    "\u202a",  # LEFT-TO-RIGHT EMBEDDING
+    "\u202e",  # RIGHT-TO-LEFT OVERRIDE
+    "\u2066",  # LEFT-TO-RIGHT ISOLATE
+    "\u2069",  # POP DIRECTIONAL ISOLATE
+    "\ufeff",  # BOM
+]
+JOINER_CHARS = [
+    "\u200c",  # ZERO WIDTH NON-JOINER (Persian and other scripts)
+    "\u200d",  # ZERO WIDTH JOINER (emoji sequences)
+]
+
+
+@pytest.mark.parametrize("tool,field,limit", TEXT_LIMITS)
+@pytest.mark.parametrize("mark", FORMAT_CHARS)
+def test_format_characters_are_stripped(client, tool_headers, payloads, tool, field, limit, mark):
+    value = f"  Ana{mark}Gomez  "
+    assert accept(client, tool_headers, payloads, tool, **{field: value})[field] == "AnaGomez"
+
+
+@pytest.mark.parametrize("tool,field,limit", TEXT_LIMITS)
+@pytest.mark.parametrize("mark", JOINER_CHARS)
+def test_zero_width_joiners_are_kept(client, tool_headers, payloads, tool, field, limit, mark):
+    value = f"  Ana{mark}Gomez  "
+    assert accept(client, tool_headers, payloads, tool, **{field: value})[field] == f"Ana{mark}Gomez"
+
+
+@pytest.mark.parametrize(
+    "tool,field",
+    [("book_appointment", "customer_name"), ("request_tow", "customer_name"), ("take_message", "caller_name")],
+)
+def test_persian_name_keeps_zwnj(client, tool_headers, payloads, tool, field):
+    name = "علی\u200cرضا"
+    assert accept(client, tool_headers, payloads, tool, **{field: f"  {name}  "})[field] == name
 
 
 @pytest.mark.parametrize("tool,field", REQUIRED_TEXT)

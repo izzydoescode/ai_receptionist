@@ -158,7 +158,9 @@ def test_request_logging_and_redaction(case, client, payloads, tool_headers, cap
             assert entry["error"] == error
         else:
             assert "error" not in entry
-        if case == "validation":
+        if case == "auth":
+            assert "phone" not in entry
+        elif case == "validation":
             assert entry["field"] == "phone"
             assert entry.get("phone") in (None, "***")
         elif case in payloads:
@@ -218,6 +220,59 @@ def test_repair_phone_mask(client, tool_headers, caplog):
         )
     entry = request_record(caplog, response, "POST", "/tools/check_repair_status", "check_repair_status")
     assert entry["phone"] == "***0101"
+
+
+def test_international_phone_is_masked(client, payloads, tool_headers, caplog):
+    with caplog.at_level(logging.DEBUG):
+        response = client.post(
+            "/tools/take_message",
+            json={**payloads["take_message"], "phone": "+509 3412 3456"},
+            headers=tool_headers,
+        )
+    assert response.status_code == 200 and response.json()["saved"] is True
+    entry = request_record(caplog, response, "POST", "/tools/take_message", "take_message")
+    assert entry["phone"] == "***3456"
+    texts = [r.getMessage() for r in caplog.records if r.name.startswith("bear")]
+    assert all("+50934123456" not in text and "509 3412 3456" not in text for text in texts)
+
+
+def test_unauthenticated_tool_requests_do_not_log_a_phone(client, payloads, caplog):
+    payload = {**payloads["take_message"], "phone": "+509 3412 3456"}
+    requests = [
+        {},
+        {"headers": {"X-Tool-Secret": "WRONG-SECRET-VALUE"}},
+    ]
+    texts = []
+    for kwargs in requests:
+        caplog.clear()
+        with caplog.at_level(logging.DEBUG):
+            response = client.post("/tools/take_message", json=payload, **kwargs)
+        assert response.status_code == 401
+        entry = request_record(caplog, response, "POST", "/tools/take_message", "take_message")
+        assert entry["error"] == "unauthorized"
+        assert "phone" not in entry
+        texts.extend(r.getMessage() for r in caplog.records if r.name.startswith("bear"))
+    assert all("+50934123456" not in text and "509 3412 3456" not in text and "34123456" not in text for text in texts)
+
+
+def test_unauthenticated_bad_transport_still_returns_401(client, payloads, caplog):
+    payload = json.dumps({**payloads["take_message"], "phone": "305-555-0199"})
+    cases = [
+        {"content": payload, "headers": {"Content-Type": "text/plain"}},
+        {"content": "{", "headers": {"Content-Type": "application/json"}},
+        {"content": json.dumps({"reason": "x" * 17000}), "headers": {"Content-Type": "application/json"}},
+    ]
+    texts = []
+    for case in cases:
+        caplog.clear()
+        with caplog.at_level(logging.DEBUG):
+            response = client.post("/tools/take_message", **case)
+        assert response.status_code == 401
+        entry = request_record(caplog, response, "POST", "/tools/take_message", "take_message")
+        assert entry["error"] == "unauthorized"
+        assert "phone" not in entry
+        texts.extend(r.getMessage() for r in caplog.records if r.name.startswith("bear"))
+    assert all("3055550199" not in text and "305-555-0199" not in text for text in texts)
 
 
 def test_unhandled_error_is_safe(client, payloads, tool_headers, monkeypatch, caplog):
