@@ -5,7 +5,8 @@ Each file is a valid `tool_config` for POST /v1/convai/tools (or `elevenlabs too
 import json, sys
 from pathlib import Path
 
-BASE = (sys.argv[1] if len(sys.argv) > 1 else "https://YOUR-NGROK-ID.ngrok-free.app").rstrip("/")
+TOOLS_DIR = Path(__file__).resolve().parent
+DEFAULT_BASE = "https://YOUR-NGROK-ID.ngrok-free.app"
 S = lambda d: {"type": "string", "description": d}
 B = lambda d: {"type": "boolean", "description": d}
 
@@ -42,13 +43,22 @@ TOOLS = {
   ["caller_name","phone","reason"]),
 }
 
-out = Path(__file__).parent
-for name, (desc, props, req) in TOOLS.items():
-    cfg = {"type": "webhook", "name": name, "description": desc,
-           "response_timeout_secs": 20,
-           "api_schema": {"url": f"{BASE}/tools/{name}", "method": "POST",
-                          "request_headers": {"Content-Type": "application/json"},
-                          "request_body_schema": {"type": "object", "description": f"Arguments for {name}",
-                                                  "properties": props, "required": req}}}
-    (out / f"{name}.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
-    print("wrote", out / f"{name}.json")
+def main(argv=None, out_dir=None):
+    out = Path(out_dir) if out_dir is not None else TOOLS_DIR
+    base = (argv[0] if argv else DEFAULT_BASE).rstrip("/")
+    paths = []
+    for name, (desc, props, req) in TOOLS.items():
+        cfg = {"type": "webhook", "name": name, "description": desc,
+               "response_timeout_secs": 20,
+               "api_schema": {"url": f"{base}/tools/{name}", "method": "POST",
+                              "request_headers": {"Content-Type": "application/json"},
+                              "request_body_schema": {"type": "object", "description": f"Arguments for {name}",
+                                                      "properties": props, "required": req}}}
+        (out / f"{name}.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
+        paths.append(out / f"{name}.json")
+        print("wrote", paths[-1])
+    return paths
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
