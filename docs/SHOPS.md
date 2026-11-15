@@ -30,15 +30,17 @@ The errors show where the problem is and what's wrong, but never the value you e
 | `ht_fallback` | no | What happens when a caller speaks Haitian Creole: `message` (default) takes a message, `french` switches to French and needs `fr` in `languages` |
 | `callback_languages` | no | Languages staff can return calls in, from `en`, `es`, `fr`, `ht`, with no repeats. Default `[en]`. Bear only promises a callback in a listed language (for example "someone who speaks Kreyòl will call you back"). |
 | `voices` | yes | One ElevenLabs voice id for each language in `languages`, and no others |
-| `first_messages` | yes | One greeting for each language in `languages`, and no others. Each greeting has to include that language's recording notice: `may be recorded` / `puede ser grabada` / `peut être enregistré` (case and accents are ignored). Florida law requires every party's consent to record a call (Fla. Stat. 934.03) |
-| `features` | no | `sms_confirmations`, `tow_dispatch`, `photo_texting`. All default to `false` |
+| `first_messages` | yes | One greeting for each language in `languages`, and no others. Each greeting has to include that language's recording notice (case and accents are ignored): English `may be recorded`; Spanish `puede ser grabada`, `pueden ser grabadas`, or `se puede grabar`; French `peut être enregistré`. Florida law requires every party's consent to record a call (Fla. Stat. 934.03) |
+| `features` | no | `sms_confirmations`, `tow_dispatch`, `photo_texting`. All default to `false`. Turn a flag on only when the shop really does that: the flags only change what the agent promises, they do not send texts, dispatch a tow, or accept photo texts |
 | `persona` | yes | `name`, plus an optional `style` |
 
 Unknown keys are rejected at every level, so a typo fails at startup instead of being silently ignored.
 
 ## How the app uses it
 - `SHOP_ID` is the default shop, and it needs a file in `SHOPS_DIR`. `/health` uses its time zone.
-- Every tool body accepts an optional `shop_id`. If it's left out, the tool uses `SHOP_ID`. ElevenLabs fills it in from the `shop_id` dynamic variable that the call-start webhook returns, so the LLM never chooses it (see `docs/ELEVENLABS_INIT.md`). `shop_id: "unknown"` can only use `take_message`. If the id is malformed, the tool returns `invalid_input` on `shop_id`. If it's well-formed but has no file, the tool returns `200 {"ok": false, "error": "unknown_shop", ...}` and writes nothing.
-- Booking follows that shop's hours, holidays, `slot_minutes` and `bays_per_slot`, in the shop's time zone. A requested time is rounded down to the start of its slot. The tow destination defaults to the shop's `name`.
+- Every tool body accepts an optional `shop_id`. ElevenLabs fills it in from the `shop_id` dynamic variable that the call-start webhook returns, so the LLM never chooses it (see `docs/ELEVENLABS_INIT.md`). It may be omitted only in single-shop dev, where the tool uses `SHOP_ID`. If more than one shop is loaded, or the app is not in dev, a missing `shop_id` is `invalid_input` so a second shop's calls cannot silently write to the default shop. `shop_id: "unknown"` can only use `take_message`. If the id is malformed, the tool returns `invalid_input` on `shop_id`. If it's well-formed but has no file, the tool returns `200 {"ok": false, "error": "unknown_shop", ...}` and writes nothing.
+- Booking follows that shop's hours, holidays, `slot_minutes` and `bays_per_slot`, in the shop's time zone. A requested time must start a slot (off-grid times are `invalid_input`). The tow destination defaults to the shop's `name`.
 - `/admin?shop=<id>` shows that shop's name and timestamps in that shop's time zone. A shop with no file returns 404.
 - Tool log lines include `shop_id`.
+- Tows and messages are stored and shown on `/admin` (the page refreshes every 3 seconds). There is no staff email or SMS alert yet, so a callback promise holds only while a person is watching the board.
+

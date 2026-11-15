@@ -19,7 +19,9 @@ For each line, record the reviewer's initials and the date in the last column. I
 |---|---|---|---|---|---|
 | 5a | HT | `backend/bear/shops.py` `KREYOL_BRIDGE_STAFFED`, sent in `callback_text` when the shop lists `ht` in `callback_languages` | Bonjou! Mwen pa pale Kreyòl byen. Nou ka pale franse, anglè oswa panyòl, oswa mwen pran mesaj ou epi yon moun ki pale Kreyòl ap rele w tounen. | Spelling and tone. Promises "someone who speaks Kreyòl will call you back", so it's only used when `ht` is listed. | |
 | 5b | HT | `backend/bear/shops.py` `KREYOL_BRIDGE_UNSTAFFED`, used otherwise | Bonjou! Mwen pa pale Kreyòl byen. Nou ka pale franse, anglè oswa panyòl, oswa mwen pran mesaj ou epi garaj la ap rele w tounen. | New line: "…or I take your message and the garage will call you back." Check that it reads naturally and promises no language. | |
-| 6 | ES | `backend/main.py` `STAFFED_CALLBACK`, the `take_message` reply (read by the agent) | Alguien que habla español le llamará. | Only sent when the shop lists `es` in `callback_languages`. | |
+| 6 | ES | `backend/main.py` `STAFFED_CALLBACK`, the `take_message` reply (read by the agent) | Alguien que habla español le llamará. | Only sent when the shop lists `es` in `callback_languages`. Native Spanish to the agent, who may say it to the caller. | |
+| 6a | FR | `backend/main.py` `STAFFED_CALLBACK`, the `take_message` reply (read by the agent) | A French-speaking team member will call back. | English instruction to the agent, only sent when the shop lists `fr`. Check that it should stay English, or be rewritten in French like the Spanish line. | |
+| 6b | HT | `backend/main.py` `STAFFED_CALLBACK`, the `take_message` reply (read by the agent) | A Creole-speaking team member will call back. | English instruction to the agent, only sent when the shop lists `ht`. Same consistency question as 6a; "Creole" vs "Kreyòl" should match the other lines. | |
 | 7 | ES | prompt, "Spanish" style notes | carro, goma (tire), frenos, aire acondicionado, chapistería/hojalatería | Words callers actually use in South Florida | |
 
 ## Agent-generated speech
