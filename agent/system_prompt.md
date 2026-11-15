@@ -70,4 +70,4 @@ Transfer (transfer_to_number) when: caller asks for a person/owner/manager twice
 > Have a native Kreyòl speaker proofread the `ht` lines before using them with real customers. Shop name is a placeholder for the demo; get the shop owner's OK before using any real shop name.
 
 ## Dynamic variables to set
-`shop_name` = Vice City Auto · `shop_city` = Hollywood · `shop_address` = (demo placeholder)
+`shop_name` = Vice City Auto · `shop_city` = Miami · `shop_address` = (demo placeholder)
