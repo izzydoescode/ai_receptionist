@@ -400,17 +400,24 @@ class RequestLoggingMiddleware:
 
 
 class ToolTransportMiddleware:
-    def __init__(self, app):
+    def __init__(self, app, tool_secret=""):
         self.app = app
+        self.tool_secret = tool_secret
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or scope["method"] != "POST" or not scope["path"].startswith("/tools/"):
             return await self.app(scope, receive, send)
-        # Transport checks run before FastAPI parses the body or checks the tool secret.
+        # Auth runs first so a bad secret never has its body parsed or a phone logged.
         headers = dict(scope["headers"])
 
         async def reject(status, detail):
             await JSONResponse(status_code=status, content={"detail": detail})(scope, receive, send)
+
+        provided = headers.get(b"x-tool-secret", b"").decode("latin-1")
+        if self.tool_secret and not hmac.compare_digest(
+            provided.encode("utf-8"), self.tool_secret.encode("utf-8")
+        ):
+            return await reject(401, "bad tool secret")
 
         content_type = headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
         if content_type != b"application/json":
@@ -456,7 +463,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title=f"{settings.shop_name} AI Receptionist tools", version="0.1.0")
     app.state.settings = settings
-    app.add_middleware(ToolTransportMiddleware)
+    app.add_middleware(ToolTransportMiddleware, tool_secret=settings.tool_secret)
     app.add_middleware(RequestLoggingMiddleware, deadline_ms=settings.tool_deadline_ms)
 
     @app.exception_handler(RequestValidationError)
