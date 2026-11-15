@@ -29,7 +29,7 @@ The errors show where the problem is and what's wrong, but never the value you e
 | `languages` | yes | Unique subset of `en`, `es`, `fr` |
 | `ht_fallback` | no | What happens when a caller speaks Haitian Creole: `message` (default) takes a message, `french` switches to French and needs `fr` in `languages` |
 | `voices` | yes | One ElevenLabs voice id for each language in `languages`, and no others |
-| `first_messages` | yes | One greeting for each language in `languages`, and no others. Each greeting has to include that language's recording notice: `may be recorded` / `puede ser grabada` / `peut être enregistré` (case and accents are ignored). Florida law requires every party's consent to record a call (Fla. Stat. 934.03) |
+| `first_messages` | yes | One greeting for each language in `languages`, and no others. Each greeting has to include that language's recording notice (case and accents are ignored): English `may be recorded`; Spanish `puede ser grabada`, `pueden ser grabadas`, or `se puede grabar`; French `peut être enregistré`. Florida law requires every party's consent to record a call (Fla. Stat. 934.03) |
 | `features` | no | `sms_confirmations`, `tow_dispatch`, `photo_texting`. All default to `false` |
 | `persona` | yes | `name`, plus an optional `style` |
 

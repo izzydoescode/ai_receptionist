@@ -23,10 +23,19 @@ def B(d):
 # A property with dynamic_variable and no description is never shown to the LLM.
 SHOP_ID = {"type": "string", "dynamic_variable": "shop_id"}
 
+ON_FALSE = (
+    " If it returns ok=false with invalid_input, re-ask for that field. "
+    "If it returns timeout or internal_error, apologize and offer to take a message."
+)
+ON_FALSE_MESSAGE = (
+    " If it returns ok=false with invalid_input, re-ask for that field. "
+    "If it returns timeout or internal_error, apologize and tell them someone from the shop will call them back."
+)
 
 TOOLS = {
     "book_appointment": (
-        "Book a drop-off appointment at the shop. Call ONLY after you have collected and read back name, phone, vehicle, service, date and time. If it returns booked=false, offer the alternatives it gives.",
+        "Book a drop-off appointment at the shop. Call ONLY after you have collected and read back name, phone, vehicle, service, date and time. If it returns booked=false, offer the alternatives it gives."
+        + ON_FALSE,
         {
             "customer_name": S("Caller's full name"),
             "phone": S(
@@ -46,7 +55,8 @@ TOOLS = {
         ["customer_name", "phone", "vehicle", "service", "preferred_date", "preferred_time"],
     ),
     "check_repair_status": (
-        "Look up the status of a car that is already at the shop. Requires the customer's last name AND either the phone number on the ticket or the RO (repair order) number. Ask for both before calling. If found=false with 'needs', ask for what's missing; if it can't verify, offer to take a message.",
+        "Look up the status of a car that is already at the shop. Requires the customer's last name AND either the phone number on the ticket or the RO (repair order) number. Ask for both before calling. If found=false with 'needs', ask for what's missing; if it can't verify, offer to take a message."
+        + ON_FALSE,
         {
             "last_name": S("Customer last name as on the repair order"),
             "phone": S("Phone number on the repair order, digits only"),
@@ -55,7 +65,8 @@ TOOLS = {
         ["last_name"],
     ),
     "request_tow": (
-        "Log a tow/roadside request for the dispatcher. Use for breakdowns, accidents, cars that won't start or are unsafe to drive. Ask about safety FIRST.",
+        "Log a tow/roadside request for the dispatcher. Use for breakdowns, accidents, cars that won't start or are unsafe to drive. Ask about safety FIRST."
+        + ON_FALSE,
         {
             "customer_name": S("Caller's name"),
             "phone": S("Callback number, digits only"),
@@ -69,7 +80,8 @@ TOOLS = {
         ["customer_name", "phone", "vehicle", "pickup_location", "issue", "is_safe"],
     ),
     "take_message": (
-        "Leave a message for the service writer/owner: after hours, estimate requests needing a human, unknown questions, failed transfers, or Haitian Creole callers who want a Creole-speaking callback.",
+        "Leave a message for the service writer/owner: after hours, estimate requests needing a human, unknown questions, failed transfers, or Haitian Creole callers who want a Creole-speaking callback."
+        + ON_FALSE_MESSAGE,
         {
             "caller_name": S("Caller's name"),
             "phone": S("Callback number, digits only"),

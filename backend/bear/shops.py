@@ -18,7 +18,11 @@ SHOP_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
 UNKNOWN_SHOP_ID = "unknown"
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 # Fla. Stat. 934.03 needs every party's consent, so each greeting must say the call may be recorded.
-RECORDING_NOTICES = {"en": "may be recorded", "es": "puede ser grabada", "fr": "peut être enregistré"}
+RECORDING_NOTICES = {
+    "en": ("may be recorded",),
+    "es": ("puede ser grabada", "pueden ser grabadas", "se puede grabar"),
+    "fr": ("peut être enregistré",),
+}
 
 
 def fold(value: str) -> str:
@@ -155,9 +159,9 @@ class ShopConfig(_Frozen):
             if extra:
                 raise ValueError(f"{field}: {', '.join(extra)} not in languages")
         for lang, message in self.first_messages.items():
-            notice = RECORDING_NOTICES[lang]
-            if fold(notice) not in fold(message):
-                raise ValueError(f'first_messages.{lang} must include the recording notice "{notice}"')
+            notices = RECORDING_NOTICES[lang]
+            if not any(fold(notice) in fold(message) for notice in notices):
+                raise ValueError(f'first_messages.{lang} must include the recording notice "{notices[0]}"')
         return self
 
     @property
