@@ -28,7 +28,7 @@ Written 2026-11-14 by Porfirio. Every task below is sized for one Codex session:
 
 ## Phase A: Security
 
-### Task 1: Test harness and lock down admin and tool auth
+### Task 1: Test harness and lock down admin and tool auth (done on `fix/tool-auth-and-admin-xss`)
 Scope: `backend/`, new `backend/tests/`, `.env.example`, README env section.
 - Add `pytest` and `httpx` to `backend/requirements-dev.txt`, with `backend/tests/conftest.py` that points `DATA_FILE` at a tmp path.
 - `TOOL_SECRET` is **required**. If it's unset or under 32 characters, the app refuses to start, unless `BEAR_ENV=dev`, where it logs a loud warning. Compare with `hmac.compare_digest`. The header stays `X-Tool-Secret`.
@@ -45,8 +45,8 @@ Acceptance:
 - If `ADMIN_PASSWORD` is unset, `/admin` returns 503 (admin disabled) rather than running open.
 - Existing tool payloads and response fields are unchanged.
 
-### Task 2: Repair-status verification
-- New contract: `check_repair_status` requires `last_name` **and** one of `phone` or `ro_number`. Plate alone is no longer enough. Plate can be an extra matcher when combined with last name.
+### Task 2: Repair-status verification (done on `fix/tool-auth-and-admin-xss`)
+- New contract: `check_repair_status` requires `last_name` **and** one of `phone` or `ro_number`. Plate alone is no longer enough. *Decision at implementation: plate was dropped as a factor entirely (it's visible on the street, so it proves nothing); extra fields like `plate` are ignored, not rejected. Both responses stay without an `ok` field until Task 3 adds the common response shape.*
 - If not verified, return `{"ok": true, "found": false, "message": "I couldn't verify that. I can take a message for the service writer."}`. Use the same response whether the record doesn't exist or the second factor is wrong, so callers can't probe for records.
 - If verified, return status, ETA, first name and vehicle. The balance is only included when verified, always phrased as an estimate.
 - Matching: case- and accent-insensitive last name (`unicodedata` NFKD), phone on its last 10 digits, exact RO. If more than one record matches, return none and take a message.

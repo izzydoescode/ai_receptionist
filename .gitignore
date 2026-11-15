@@ -23,3 +23,9 @@ venv/
 .ngrok/
 .DS_Store
 *.log
+
+# Test artifacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
