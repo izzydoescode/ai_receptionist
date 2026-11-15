@@ -150,7 +150,7 @@ Acceptance:
 - *`/admin?shop=` with no shop file returns 404, and the board uses that shop's name and time zone. There is still one admin credential for all shops.*
 - *PyYAML is now a runtime dependency.*
 
-### Task 8: ElevenLabs conversation-initiation webhook
+### Task 8: ElevenLabs conversation-initiation webhook (done on `dev/call-start-webhook`)
 - `POST /elevenlabs/init` is protected by its own `INIT_WEBHOOK_SECRET` header (configured in ElevenLabs Agents settings).
 - The request body has `caller_id`, `called_number`, `agent_id`, `call_sid` and `conversation_id`. Look up the shop by `called_number`.
 - The response is `{"type": "conversation_initiation_client_data", "dynamic_variables": {...}, "conversation_config_override": {"agent": {"first_message": ..., "language": ...}, "tts": {"voice_id": ...}}}`.
@@ -165,6 +165,16 @@ Acceptance:
 - Tests for a known number, an unknown number and a bad secret.
 - Response JSON validates against a Pydantic model of the documented shape.
 - Every dynamic variable used in `agent/system_prompt.md` is present in the response. A test parses the `{{...}}` placeholders and enforces this.
+
+*Decisions at implementation (full reference in `docs/ELEVENLABS_INIT.md`):*
+- *The header is `X-Init-Webhook-Secret`. `INIT_WEBHOOK_SECRET` is required outside dev (at least 32 characters, and different from `TOOL_SECRET`). This is a breaking change for deploys.*
+- *`called_number` is normalized to E.164. Missing, unparseable or unmatched numbers all get the unknown greeting rather than an error, because a failed webhook can keep the call from starting.*
+- *The language and voice come from the shop's first listed language. The unknown greeting is English, has a recording notice and no voice override.*
+- *`hours_text` groups days that have the same hours and lists up to five upcoming holidays. `features_text` says plainly what the shop can't do.*
+- *`shop_id` `unknown` is reserved. `take_message` files those messages under `unknown`, and they show at `/admin?shop=unknown`. The other tools return `unknown_shop`.*
+- *The tool configs carry `shop_id` as `{"type": "string", "dynamic_variable": "shop_id"}` with no description, and it's required.*
+- *The init log line has `shop_id` and the body's `conversation_id`, never the phone numbers.*
+- *The ElevenLabs docs were checked on Nov 15, 2026. The request matches. Optional response fields (`prompt`, `branch_id`, `environment`, `user_id`) aren't used.*
 
 ### Task 9: Templated prompt and tool generation
 - `agent/system_prompt.md` uses only dynamic variables for shop facts. No hard-coded hours.

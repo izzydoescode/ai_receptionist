@@ -34,6 +34,7 @@ For each additional language, pick a voice whose native language matches. The El
 ## Webhook tool setup (per tool)
 Agent > Tools > Add tool > Webhook: Name / Description / Method POST / URL `https://<ngrok>/tools/<name>` / Body parameters from the JSON (`request_body_schema.properties`), all "LLM prompt" value type.
 Required: Headers > `X-Tool-Secret` as a **Secret** with the same value as the backend's `TOOL_SECRET` env var (the backend rejects tool calls without it).
+`shop_id` is the exception: its value type is **Dynamic variable** `shop_id`, filled by the call-start webhook (see `docs/ELEVENLABS_INIT.md` for that webhook and the Security-tab overrides).
 Tip: on `phone` in book_appointment you can set the value type to the dynamic variable `system__caller_id` instead of asking.
 
 ## Transfer rule (transfer_to_number)

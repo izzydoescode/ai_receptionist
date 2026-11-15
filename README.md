@@ -101,7 +101,7 @@ uvicorn --factory main:create_app --reload --port 8000 --no-access-log
 | `SHOP_ID` | no | `vice-city-auto` | Default shop used by tools; lowercase letters, digits and hyphens, starting with a letter or digit, up to 64 characters. It must have a file in `SHOPS_DIR`. |
 | `SHOPS_DIR` | no | the repo's `shops/` | Folder with one `<shop_id>.yaml` per shop. Every file is validated at startup and any problem stops the app. |
 
-Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `GET /admin` (HTTP Basic), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or RO number** on the ticket.
+Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `POST /elevenlabs/init` (call-start webhook, needs `X-Init-Webhook-Secret`; see `docs/ELEVENLABS_INIT.md`), `GET /admin` (HTTP Basic, `?shop=<id>` or `?shop=unknown`), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or RO number** on the ticket.
 
 ### Postgres
 Set `DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE` in your environment, then run `alembic upgrade head` from `backend/` before starting the app. `postgres://` and `postgresql://` URLs are also normalized to psycopg. For TLS, append `?sslmode=require`. Keep real credentials out of source control and logs.
