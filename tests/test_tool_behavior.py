@@ -84,7 +84,8 @@ BANNED_WHEN_OFF = ["15 minutes", "dispatcher", "text photos", "24/7"]
 def test_tow_without_dispatch_promises_only_a_callback(client, payloads, tool_headers):
     message = post(client, tool_headers, "request_tow", payloads["request_tow"])["message"]
     assert message == (
-        "Tow request logged. Tell the caller: \"I've logged it and the shop will call you back as soon as possible. "
+        "I've gone ahead and logged the tow. Tell the caller: "
+        "\"I've logged the tow, and the shop will call you back as soon as possible. "
         "If you're unsafe, call 911.\""
     )
     for phrase in BANNED_WHEN_OFF:
@@ -94,7 +95,10 @@ def test_tow_without_dispatch_promises_only_a_callback(client, payloads, tool_he
 def test_tow_with_dispatch_promises_the_dispatcher(make_client, payloads, tool_headers):
     client = make_client(_shops=[{"features": TOW_ON}])
     message = post(client, tool_headers, "request_tow", payloads["request_tow"])["message"]
-    assert message == "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
+    assert (
+        message
+        == "I've gone ahead and logged the tow. A dispatcher will call you back within 15 minutes with an arrival time."
+    )
 
 
 def test_unsafe_tow_without_dispatch_keeps_the_911_warning_first(client, payloads, tool_headers):

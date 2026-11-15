@@ -732,9 +732,12 @@ def create_app() -> FastAPI:
         fields["destination"] = req.destination or shop.name
         tow = store.create_tow(shop.shop_id, **fields, status="dispatch_requested")
         if shop.features.tow_dispatch:
-            msg = "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
+            msg = (
+                "I've gone ahead and logged the tow. A dispatcher will call you back "
+                "within 15 minutes with an arrival time."
+            )
         else:
-            msg = f'Tow request logged. Tell the caller: "{TOW_FALLBACK_REPLY}"'
+            msg = f'I\'ve gone ahead and logged the tow. Tell the caller: "{TOW_FALLBACK_REPLY}"'
         if not req.is_safe:
             msg = "Caller may be unsafe: tell them to call 911 now if anyone is hurt or they're in traffic. " + msg
         return {"ok": True, "logged": True, "ticket": tow["public_id"], "message": msg}
