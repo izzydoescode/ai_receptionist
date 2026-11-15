@@ -165,6 +165,17 @@ def test_sarif_summary(tmp_path):
     assert summarize([])[1] == 0
 
 
+def test_sarif_main_fails_when_no_files_are_found(tmp_path, monkeypatch):
+    from sarif_summary import main
+
+    (tmp_path / "sarif-results").mkdir()
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.chdir(tmp_path)
+    assert main() == 1
+    assert "No SARIF files found" in summary.read_text()
+
+
 @pytest.mark.parametrize("level, exit_code", [("error", 1), ("warning", 0)])
 def test_sarif_main(tmp_path, level, exit_code):
     reports = tmp_path / "sarif-results"
