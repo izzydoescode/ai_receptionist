@@ -77,7 +77,7 @@ Requires Python 3.11+ (tested on 3.13).
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install -r backend/requirements-dev.txt        # runtime deps + pytest, pytest-cov, httpx
+pip install --require-hashes -r backend/requirements-dev.lock   # pinned runtime + dev deps
 cp .env.example .env                               # then replace both CHANGE_ME values; never commit .env
 set -a && . ./.env && set +a                       # load the variables into this shell
 cd backend
@@ -85,6 +85,14 @@ alembic upgrade head                              # required before app startup
 python -m bear.seed --demo                         # optional demo repair orders
 uvicorn --factory main:create_app --reload --port 8000 --no-access-log
 ```
+
+Installs use the hashed lockfiles (`backend/requirements.lock` for runtime, `backend/requirements-dev.lock` for dev). After you change `backend/requirements.txt` or `backend/requirements-dev.txt`, refresh the pins:
+
+```bash
+pip-compile --allow-unsafe --generate-hashes --no-strip-extras --output-file=backend/requirements.lock backend/requirements.txt
+pip-compile --allow-unsafe --generate-hashes --no-strip-extras --output-file=backend/requirements-dev.lock backend/requirements-dev.txt
+```
+
 
 `main:app` no longer exists. The app is built by the `create_app()` factory, which reads settings when it starts. With the `CHANGE_ME` placeholder still in place it refuses to start (the secret is too short), which is on purpose.
 
@@ -136,7 +144,7 @@ On every push and pull request:
 - **quality**: `ruff check` and `ruff format --check`.
 - **security**:
   - CodeQL (security-and-quality queries; the SARIF file is kept as an artifact and summarized, and any error-level finding fails the job);
-  - `pip-audit --strict` on the requirements;
+  - `pip-audit --strict` on the hashed lockfile;
   - gitleaks over the full git history.
 
 Security also runs weekly. Dependabot opens weekly grouped updates for pip and the pinned actions. Because the repo is private, CodeQL results are not uploaded to the Security tab by default. Set the repo variable `CODE_SCANNING_UPLOAD=true` once code scanning is available.
