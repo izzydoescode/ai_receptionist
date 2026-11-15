@@ -109,3 +109,22 @@ def audit(client):
 
     with client.app.state.store.engine.connect() as conn:
         return conn.execute(select(audit_events)).all()
+
+
+def test_unknown_number_calls_can_leave_a_message(two_shops, payloads, tool_headers):
+    result = call(two_shops, tool_headers, "take_message", {**payloads["take_message"], "shop_id": "unknown"})
+    assert result["ok"] is True and result["saved"] is True
+    (message,) = board(two_shops, "unknown")["messages"]
+    assert message["public_id"] == result["ticket"]
+    assert rows(two_shops, "messages") == []
+
+
+@pytest.mark.parametrize("tool", ["book_appointment", "check_repair_status", "request_tow"])
+def test_unknown_number_calls_cannot_use_other_tools(two_shops, payloads, tool_headers, tool):
+    audit_before = len(audit(two_shops))
+    result = call(two_shops, tool_headers, tool, {**payloads[tool], "shop_id": "unknown"})
+    assert result["ok"] is False
+    assert result["error"] == "unknown_shop"
+    assert "take a message" in result["message"]
+    assert not any(board(two_shops, "unknown").values())
+    assert len(audit(two_shops)) == audit_before

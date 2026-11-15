@@ -39,7 +39,7 @@ from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 from bear.db import check_schema, make_engine
 from bear.initiation import InitRequest, shop_initiation, unknown_initiation
 from bear.seed import DEMO_REPAIR_ORDERS
-from bear.shops import SHOP_ID_PATTERN, ShopConfig, load_shops
+from bear.shops import SHOP_ID_PATTERN, UNKNOWN_SHOP_ID, ShopConfig, load_shops
 from bear.store import SlotFull, Store
 
 DEFAULT_SHOPS_DIR = Path(__file__).resolve().parent.parent / "shops"
@@ -90,7 +90,7 @@ STATUS_TEXT = {
 UNKNOWN_SHOP = {
     "ok": False,
     "error": "unknown_shop",
-    "message": "Sorry, this line isn't set up in our system yet. Ask the caller to call back later.",
+    "message": "I can't do that on this line. Offer to take a message so someone can call back.",
 }
 
 REPAIR_STATUS_NEEDS = {
@@ -667,10 +667,15 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/take_message", dependencies=[Depends(check_secret)])
     def take_message(req: TakeMessage):
-        shop = resolve_shop(req.shop_id)
-        if shop is None:
-            return UNKNOWN_SHOP
-        m = store.create_message(shop.shop_id, **req.model_dump(exclude={"vehicle", "shop_id"}))
+        # Calls to a number no shop owns (Task 8) may still leave a message, filed under "unknown".
+        if req.shop_id == UNKNOWN_SHOP_ID:
+            shop_id = UNKNOWN_SHOP_ID
+        else:
+            shop = resolve_shop(req.shop_id)
+            if shop is None:
+                return UNKNOWN_SHOP
+            shop_id = shop.shop_id
+        m = store.create_message(shop_id, **req.model_dump(exclude={"vehicle", "shop_id"}))
         lang = {
             "ht": " A Creole-speaking team member will call back.",
             "es": " Alguien que habla español le llamará.",
