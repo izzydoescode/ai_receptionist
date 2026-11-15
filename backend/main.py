@@ -38,10 +38,13 @@ from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 
 from bear.db import check_schema, make_engine
 from bear.initiation import InitRequest, shop_initiation, unknown_initiation
+from bear.post_call import parse_transcription
 from bear.seed import DEMO_REPAIR_ORDERS
 from bear.shops import LANGUAGE_NAMES, SHOP_ID_PATTERN, TOW_FALLBACK_REPLY, UNKNOWN_SHOP_ID, ShopConfig, load_shops
 from bear.store import SlotFull, Store
+from bear.webhook_signature import SignatureError, verify_signature
 
+POST_CALL_MAX_BYTES = 2 * 1024 * 1024  # transcription events only; leave "Send audio data" off
 DEFAULT_SHOPS_DIR = Path(__file__).resolve().parent.parent / "shops"
 
 
@@ -54,6 +57,7 @@ class Settings:
     shop_id: str
     shops_dir: str = str(DEFAULT_SHOPS_DIR)
     init_webhook_secret: str = ""
+    post_call_webhook_secret: str = ""
     tool_deadline_ms: int = 4000
     admin_user: str = "admin"
 
@@ -69,6 +73,7 @@ class Settings:
             tool_deadline_ms=deadline_ms,
             tool_secret=os.getenv("TOOL_SECRET", ""),
             init_webhook_secret=os.getenv("INIT_WEBHOOK_SECRET", ""),
+            post_call_webhook_secret=os.getenv("POST_CALL_WEBHOOK_SECRET", ""),
             env=os.getenv("BEAR_ENV", ""),
             admin_user=os.getenv("ADMIN_USER", "admin"),
             admin_password=os.getenv("ADMIN_PASSWORD", ""),
@@ -463,6 +468,10 @@ def create_app() -> FastAPI:
         raise RuntimeError("INIT_WEBHOOK_SECRET must differ from TOOL_SECRET")
     if not settings.init_webhook_secret:
         logging.getLogger("bear").warning("INIT_WEBHOOK_SECRET is unset; the init webhook is open in dev")
+    if settings.post_call_webhook_secret in {settings.tool_secret, settings.init_webhook_secret} - {""}:
+        raise RuntimeError("POST_CALL_WEBHOOK_SECRET must differ from TOOL_SECRET and INIT_WEBHOOK_SECRET")
+    if not settings.post_call_webhook_secret:
+        logging.getLogger("bear").warning("POST_CALL_WEBHOOK_SECRET is unset; post-call summaries are disabled")
 
     if not re.fullmatch(SHOP_ID_PATTERN, settings.shop_id):
         raise RuntimeError("invalid SHOP_ID")
@@ -596,6 +605,45 @@ def create_app() -> FastAPI:
         else:
             reply = shop_initiation(shop, now)
         return JSONResponse(reply.model_dump(exclude_none=True))
+
+    @app.post("/elevenlabs/post-call")
+    async def elevenlabs_post_call(request: Request):
+        """Post-call webhook: keep a short, signed summary of each finished call (never the transcript)."""
+        if not settings.post_call_webhook_secret:
+            raise HTTPException(status_code=503, detail="post-call webhook disabled")
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > POST_CALL_MAX_BYTES:
+                raise HTTPException(status_code=413, detail="request body too large")
+        try:
+            verify_signature(
+                bytes(raw),
+                request.headers.get("elevenlabs-signature"),
+                settings.post_call_webhook_secret,
+                now=time.time(),
+            )
+        except SignatureError:
+            raise HTTPException(status_code=401, detail="bad signature") from None
+        try:
+            event = json.loads(raw)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid JSON body") from None
+        if not isinstance(event, dict) or not isinstance(event.get("type"), str):
+            raise HTTPException(status_code=400, detail="invalid event")
+        if event["type"] != "post_call_transcription":
+            return {"status": "ignored"}  # audio, call_initiation_failure, and future types
+        if not isinstance(event.get("data"), dict):
+            raise HTTPException(status_code=400, detail="invalid event")
+        try:
+            call = parse_transcription(event["data"])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid conversation_id") from None
+        shop_id = call.shop_id if call.shop_id in shops else UNKNOWN_SHOP_ID
+        request.state.bear_shop_id = shop_id
+        request.state.bear_conversation_id = call.fields["conversation_id"]
+        saved = store.save_call_summary(shop_id, **call.fields)
+        return {"status": "stored" if saved else "duplicate"}
 
     @app.post("/tools/book_appointment", dependencies=[Depends(check_secret)])
     def book_appointment(req: BookAppointment):

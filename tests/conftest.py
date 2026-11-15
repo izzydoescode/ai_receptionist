@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 SECRET = "dummy-tool-secret-" + "x" * 22  # 40 characters
 INIT_SECRET = "dummy-init-secret-" + "y" * 22  # 40 characters
+POST_CALL_SECRET = "wsec_dummy-post-call-" + "z" * 19  # 40 characters
 ADMIN_AUTH = ("admin", "dummy-admin-password")
 CONFIG_KEYS = (
     "TOOL_SECRET",
@@ -23,6 +24,7 @@ CONFIG_KEYS = (
     "TOOL_DEADLINE_MS",
     "SHOPS_DIR",
     "INIT_WEBHOOK_SECRET",
+    "POST_CALL_WEBHOOK_SECRET",
 )
 EXAMPLE_SHOP = yaml.safe_load((Path(__file__).resolve().parents[1] / "shops/vice-city-auto.yaml").read_text("utf-8"))
 
@@ -56,6 +58,7 @@ def make_client(monkeypatch, tmp_path):
         settings = {
             "TOOL_SECRET": SECRET,
             "INIT_WEBHOOK_SECRET": INIT_SECRET,
+            "POST_CALL_WEBHOOK_SECRET": POST_CALL_SECRET,
             "ADMIN_PASSWORD": ADMIN_AUTH[1],
             "DATABASE_URL": f"sqlite:///{tmp_path}/bear-{len(clients)}.db",
             "SHOPS_DIR": write_shops(tmp_path / f"shops-{len(clients)}", *_shops),
