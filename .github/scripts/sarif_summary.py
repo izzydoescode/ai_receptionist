@@ -7,6 +7,41 @@ from collections import Counter
 from pathlib import Path
 
 
+def rule_components(tool, reference):
+    """Select a referenced tool component, or search the driver and extensions."""
+    extensions = tool.get("extensions", [])
+    if not reference:
+        return [tool.get("driver", {}), *extensions]
+    index = reference.get("index")
+    if isinstance(index, int) and 0 <= index < len(extensions):
+        return [extensions[index]]
+    return [
+        component
+        for component in [tool.get("driver", {}), *extensions]
+        if any(reference.get(key) and reference[key] == component.get(key) for key in ("name", "guid"))
+    ]
+
+
+def result_level(run, result):
+    """Resolve explicit severity, then the referenced rule, then SARIF's default."""
+    if "level" in result:
+        return result["level"]
+    reference = result.get("rule", {})
+    components = rule_components(run.get("tool", {}), reference.get("toolComponent"))
+    index = result.get("ruleIndex", reference.get("index"))
+    rule_id = result.get("ruleId", reference.get("id"))
+    for component in components:
+        rules = component.get("rules", [])
+        if index is not None:
+            if isinstance(index, int) and 0 <= index < len(rules):
+                return rules[index].get("defaultConfiguration", {}).get("level", "warning")
+        elif rule_id is not None:
+            for rule in rules:
+                if rule.get("id") == rule_id:
+                    return rule.get("defaultConfiguration", {}).get("level", "warning")
+    return "warning"
+
+
 def summarize(paths):
     """Return Markdown for all result counts and the first 20 findings, plus error count."""
     counts = Counter()
@@ -15,7 +50,9 @@ def summarize(paths):
         report = json.loads(Path(path).read_text(encoding="utf-8"))
         for run in report.get("runs", []):
             for result in run.get("results", []):
-                level = result.get("level", "warning")
+                if result.get("kind", "fail") != "fail":
+                    continue
+                level = result_level(run, result)
                 counts[level] += 1
                 if len(findings) >= 20:
                     continue
