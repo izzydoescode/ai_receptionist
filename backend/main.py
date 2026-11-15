@@ -693,14 +693,18 @@ def create_app() -> FastAPI:
         shop = settings.shop_id if shop is None else shop
         if not re.fullmatch(SHOP_ID_PATTERN, shop):
             raise HTTPException(status_code=400, detail="invalid shop")
-        if shop not in shops:
+        if shop == UNKNOWN_SHOP_ID:
+            # Messages from numbers no shop owns, shown in the default shop's time zone.
+            board_name, board_tz = "Unrecognized numbers", default_shop.tz
+        elif shop in shops:
+            board_name, board_tz = shops[shop].name, shops[shop].tz
+        else:
             raise HTTPException(status_code=404, detail="unknown shop")
-        config = shops[shop]
         db = store.board(shop, 50)
 
         def display(value):
             if isinstance(value, datetime):
-                return value.astimezone(config.tz).strftime("%Y-%m-%d %H:%M %Z")
+                return value.astimezone(board_tz).strftime("%Y-%m-%d %H:%M %Z")
             return str(value)
 
         def table(rows, cols):
@@ -711,10 +715,10 @@ def create_app() -> FastAPI:
             )
             return f"<table><tr>{h}</tr>{b}</table>"
 
-        return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(config.name), quote=True)} board</title>
+        return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(board_name), quote=True)} board</title>
     <style>body{{font-family:system-ui;margin:24px}}table{{border-collapse:collapse;margin-bottom:24px}}
     td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}</style></head><body>
-    <h1>{html.escape(str(config.name), quote=True)}: AI receptionist live board</h1>
+    <h1>{html.escape(str(board_name), quote=True)}: AI receptionist live board</h1>
     <h2>Appointments</h2>{table(db["appointments"], ["public_id", "slot_start", "customer_name", "phone", "vehicle", "service", "language"])}
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
     <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "reason", "urgency", "callback_language"])}

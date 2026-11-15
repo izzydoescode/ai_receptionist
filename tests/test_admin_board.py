@@ -132,3 +132,13 @@ def test_board_query_still_authenticated_and_escaped(make_client):
     body = client.get("/admin?shop=other", auth=ADMIN_AUTH).text
     assert html.escape(name, quote=True) in body
     assert name not in body
+
+
+def test_unknown_number_messages_have_their_own_board(make_client):
+    client = make_client(_seed=False)
+    client.app.state.store.create_message("unknown", **{**MESSAGE, "caller_name": "Unmatched Caller"}, created_at=FIXED)
+    body = client.get("/admin?shop=unknown", auth=ADMIN_AUTH).text
+    assert "<title>Unrecognized numbers board</title>" in body
+    assert "Unmatched Caller" in body
+    assert "<td>2026-11-16 10:00 EST</td>" in body
+    assert "Unmatched Caller" not in client.get("/admin", auth=ADMIN_AUTH).text
