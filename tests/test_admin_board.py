@@ -150,7 +150,6 @@ def test_unknown_number_messages_have_their_own_board(make_client):
     assert "Unmatched Caller" not in client.get("/admin", auth=ADMIN_AUTH).text
 
 
-
 def test_board_makes_non_english_callback_language_and_high_urgency_stand_out(make_client):
     client = make_client(_seed=False)
     store = client.app.state.store
@@ -165,7 +164,6 @@ def test_board_makes_non_english_callback_language_and_high_urgency_stand_out(ma
     assert re.search(r"<td>normal</td>", body)
     assert re.search(r'<th\b[^>]*class="[^"]*standout[^"]*"[^>]*>callback_language</th>', body)
     assert re.search(r'<th\b[^>]*class="[^"]*standout[^"]*"[^>]*>urgency</th>', body)
-
 
 
 def test_call_rows_with_missing_details_show_blanks(make_client):
