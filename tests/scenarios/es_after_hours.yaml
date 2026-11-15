@@ -13,7 +13,7 @@ calls:
       preferred_date: "{next_sunday}"
       preferred_time: "10:00"
       language: es
-    expect: {ok: true, booked: false, message: We're closed Sundays.}
+    expect: {ok: true, booked: false, message: "We're closed Sundays, but I can look at another day for you."}
     expect_length: {alternatives: 3}
   - tool: take_message
     args:

@@ -227,12 +227,12 @@ class ShopConfig(_Frozen):
         if self.slot_start(local) is not None:
             return None
         if local.date() in self.holidays:
-            return "We're closed that day for a holiday."
+            return "We're closed that day for a holiday, but I can look at another day for you."
         intervals = self.hours.for_weekday(local.weekday())
         if not intervals:
-            return f"We're closed {WEEKDAYS[local.weekday()].capitalize()}s."
+            return f"We're closed {WEEKDAYS[local.weekday()].capitalize()}s, but I can look at another day for you."
         spans = " or ".join(f"from {speak_time(i.open)} to {speak_time(i.close)}" for i in intervals)
-        return f"That day we take drop-offs {spans}."
+        return f"We're not open at that time. That day we take drop-offs {spans}."
 
     def upcoming_slots(self, after: datetime, days: int = 14) -> Iterator[datetime]:
         """Yield slot starts strictly after ``after`` for ``days`` local calendar days, in order."""
@@ -263,12 +263,15 @@ class ShopConfig(_Frozen):
             if last != first:
                 days += f" to {WEEKDAYS[last].capitalize()}"
             parts.append(f"{days} {spans}" if spans else f"closed {days}")
-        text = "; ".join(parts) + "."
+        if groups and not groups[0][0]:
+            text = "We're " + "; ".join(parts) + "."
+        else:
+            text = "We're open " + "; ".join(parts) + "."
         upcoming = sorted(day for day in self.holidays if day >= today)[:max_holidays]
         if upcoming:
             names = [f"{d:%A}, {d:%B} {d.day}, {d.year}" for d in upcoming]
             listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
-            text += f" Closed for holidays on {listed}."
+            text += f" We'll also be closed for holidays on {listed}."
         return text
 
     def languages_text(self) -> str:

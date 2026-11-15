@@ -569,7 +569,7 @@ def create_app() -> FastAPI:
     def slot_problem(shop: ShopConfig, dt: datetime) -> str | None:
         reason = shop.closed_reason(dt)
         if reason is None and dt < datetime.now(shop.tz):
-            return "That time already passed."
+            return "That time's already come and gone. Want to look at a later slot?"
         return reason
 
     def next_slots(shop: ShopConfig, start: datetime, n: int = 3) -> list[str]:
@@ -658,7 +658,9 @@ def create_app() -> FastAPI:
         if shop is None:
             return UNKNOWN_SHOP
         if date.fromisoformat(req.preferred_date) > datetime.now(shop.tz).date() + timedelta(days=60):
-            return invalid_input("preferred_date", "I can only book up to 60 days out.")
+            return invalid_input(
+                "preferred_date", "I can only book up to 60 days out, so we'll need a date sooner than that."
+            )
         dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(tzinfo=shop.tz)
         problem = slot_problem(shop, dt)
         if problem is None:
@@ -666,7 +668,7 @@ def create_app() -> FastAPI:
             try:
                 appt = store.book_appointment(shop.shop_id, shop.slot_start(dt), shop.bays_per_slot, **fields)
             except SlotFull:
-                problem = "That slot is full."
+                problem = "That time's already booked up. I can offer a few other times that are open."
         if problem:
             return {
                 "ok": True,
@@ -679,7 +681,10 @@ def create_app() -> FastAPI:
             "booked": True,
             "confirmation": appt["public_id"],
             "when": dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " "),
-            "message": f"Booked {req.vehicle} for {req.service}. Bring the keys to the front desk.",
+            "message": (
+                f"You're all set. I've booked the {req.vehicle} for {req.service}. "
+                "Just bring the keys to the front desk when you come in."
+            ),
         }
 
     @app.post("/tools/check_repair_status", dependencies=[Depends(check_secret)])

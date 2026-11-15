@@ -15,8 +15,8 @@ def shop(**changes):
 def test_hours_text_groups_matching_days_and_lists_upcoming_holidays():
     text = shop(holidays=["2026-11-26", "2026-12-25", "2027-01-01"]).hours_text(TODAY)
     assert text == (
-        "Monday to Friday 8:00 AM to 6:00 PM; Saturday 9:00 AM to 2:00 PM; closed Sunday. "
-        "Closed for holidays on Friday, December 25, 2026 and Friday, January 1, 2027."
+        "We're open Monday to Friday 8:00 AM to 6:00 PM; Saturday 9:00 AM to 2:00 PM; closed Sunday. "
+        "We'll also be closed for holidays on Friday, December 25, 2026 and Friday, January 1, 2027."
     )
 
 
@@ -31,8 +31,23 @@ def test_hours_text_without_holidays_and_with_split_days():
         "sunday": [],
     }
     assert shop(hours=week, holidays=[]).hours_text(TODAY) == (
-        "Monday 8:00 AM to 12:00 PM and 1:00 PM to 5:00 PM; closed Tuesday to Wednesday; "
+        "We're open Monday 8:00 AM to 12:00 PM and 1:00 PM to 5:00 PM; closed Tuesday to Wednesday; "
         "Thursday to Saturday 8:00 AM to 5:00 PM; closed Sunday."
+    )
+
+
+def test_hours_text_when_the_week_starts_closed():
+    week = {
+        "monday": [],
+        "tuesday": [{"open": "08:00", "close": "17:00"}],
+        "wednesday": [{"open": "08:00", "close": "17:00"}],
+        "thursday": [{"open": "08:00", "close": "17:00"}],
+        "friday": [{"open": "08:00", "close": "17:00"}],
+        "saturday": [],
+        "sunday": [],
+    }
+    assert shop(hours=week, holidays=[]).hours_text(TODAY) == (
+        "We're closed Monday; Tuesday to Friday 8:00 AM to 5:00 PM; closed Saturday to Sunday."
     )
 
 
@@ -70,7 +85,11 @@ def test_features_text_states_only_what_is_on(features, expected):
 
 
 def test_hours_text_with_one_holiday():
-    assert shop(holidays=["2026-12-25"]).hours_text(TODAY).endswith("Closed for holidays on Friday, December 25, 2026.")
+    assert (
+        shop(holidays=["2026-12-25"])
+        .hours_text(TODAY)
+        .endswith("We'll also be closed for holidays on Friday, December 25, 2026.")
+    )
 
 
 @pytest.mark.parametrize(

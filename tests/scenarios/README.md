@@ -12,7 +12,7 @@ calls:
     repeat: 2                 # optional: send the same call N times, check the last response
     args: {...}               # the request body; "{next_monday}" ... "{next_sunday}" become dates
     expect: {booked: true}    # exact values in the response
-    expect_contains: {message: Bring the keys}   # substrings of response fields
+    expect_contains: {message: bring the keys}   # substrings of response fields
     expect_length: {alternatives: 3}
     expect_missing_keys: [vehicle]               # fields that must not appear
     expect_not_in_response: [Carlos]             # text that must not appear anywhere in the response

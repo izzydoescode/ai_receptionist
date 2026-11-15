@@ -157,7 +157,7 @@ def test_past_date_is_business_outcome(client, tool_headers, payloads, frozen_to
     assert response.status_code == 200
     result = response.json()
     assert result["booked"] is False
-    assert result["message"] == "That time already passed."
+    assert result["message"] == "That time's already come and gone. Want to look at a later slot?"
     assert isinstance(result["alternatives"], list)
     assert result["ok"] is True
     assert snapshot(client)["appointments"] == []

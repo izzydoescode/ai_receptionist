@@ -56,7 +56,7 @@ def test_third_booking_in_same_hour_is_full_with_three_alternatives(client, payl
     assert post(client, tool_headers, "book_appointment", {**payload, "preferred_time": "10:30"})["booked"] is True
     result = post(client, tool_headers, "book_appointment", payload)
     assert result["booked"] is False
-    assert result["message"] == "That slot is full."
+    assert result["message"] == "That time's already booked up. I can offer a few other times that are open."
     assert len(result["alternatives"]) == 3
 
 
@@ -198,10 +198,10 @@ def test_booking_follows_configured_hours_slot_size_and_bays(make_client, payloa
     (appointment,) = rows(client, "appointments")
     assert appointment["slot_start"].astimezone(ZoneInfo("America/New_York")).strftime("%H:%M") == "10:00"
     result = post(client, tool_headers, "book_appointment", {**payload, "preferred_time": "10:20"})
-    assert result["message"] == "That slot is full."
+    assert result["message"] == "That time's already booked up. I can offer a few other times that are open."
     assert [a.split(" at ")[1] for a in result["alternatives"]] == ["10:30 AM", "11:00 AM", "11:30 AM"]
     closed = post(client, tool_headers, "book_appointment", {**payload, "preferred_time": "12:00"})
-    assert closed["message"] == "That day we take drop-offs from 10:00 AM to 12:00 PM."
+    assert closed["message"] == "We're not open at that time. That day we take drop-offs from 10:00 AM to 12:00 PM."
 
 
 def test_booking_on_a_holiday_is_refused_and_skipped(make_client, payloads, tool_headers):
@@ -209,6 +209,6 @@ def test_booking_on_a_holiday_is_refused_and_skipped(make_client, payloads, tool
     client = make_client(_shops=[{"holidays": [monday.isoformat()]}])
     result = post(client, tool_headers, "book_appointment", payloads["book_appointment"])
     assert result["booked"] is False
-    assert result["message"] == "We're closed that day for a holiday."
+    assert result["message"] == "We're closed that day for a holiday, but I can look at another day for you."
     assert result["alternatives"][0].startswith("Tuesday")
     assert rows(client, "appointments") == []

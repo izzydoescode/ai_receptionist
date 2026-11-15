@@ -16,7 +16,7 @@ ElevenLabs calls `POST /elevenlabs/init` while an inbound Twilio call is still r
     "shop_name": "Vice City Auto",
     "shop_city": "Miami",
     "shop_address": "555 Vice Boulevard, Miami, FL 33139",
-    "hours_text": "Monday to Friday 8:00 AM to 6:00 PM; Saturday 9:00 AM to 2:00 PM; closed Sunday. Closed for holidays on ...",
+    "hours_text": "We're open Monday to Friday 8:00 AM to 6:00 PM; Saturday 9:00 AM to 2:00 PM; closed Sunday. We'll also be closed for holidays on ...",
     "services_text": "general repair, diagnostics and check engine light, ...",
     "persona_name": "Bear",
     "features_text": "We do not send text confirmations. Tow requests go to staff; there's no automatic dispatch. After logging a tow, say: \"I've logged the tow, and the shop will call you back as soon as possible. If you're unsafe, call 911.\" We cannot receive photos by text. Tell callers to bring photos to the estimate, ...",
