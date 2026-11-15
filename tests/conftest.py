@@ -23,6 +23,7 @@ CONFIG_KEYS = (
     "TOOL_DEADLINE_MS",
     "SHOPS_DIR",
     "INIT_WEBHOOK_SECRET",
+    "INIT_WEBHOOK_SECRET_PREVIOUS",
 )
 EXAMPLE_SHOP = yaml.safe_load((Path(__file__).resolve().parents[1] / "shops/vice-city-auto.yaml").read_text("utf-8"))
 
@@ -55,6 +56,7 @@ def make_client(monkeypatch, tmp_path):
             monkeypatch.delenv(key, raising=False)
         settings = {
             "TOOL_SECRET": SECRET,
+            "BEAR_ENV": "dev",
             "INIT_WEBHOOK_SECRET": INIT_SECRET,
             "ADMIN_PASSWORD": ADMIN_AUTH[1],
             "DATABASE_URL": f"sqlite:///{tmp_path}/bear-{len(clients)}.db",
