@@ -66,3 +66,44 @@ def test_build_context_leaves_out_secrets_and_local_data():
     ignored = set(read(".dockerignore").split())
     for pattern in [".env", ".env.*", "**/*.db", ".git", ".venv", "tests", "**/__pycache__"]:
         assert pattern in ignored, pattern
+
+
+def fly():
+    import tomllib
+
+    return tomllib.loads(read("fly.toml"))
+
+
+SECRET_NAMES = ["TOOL_SECRET", "INIT_WEBHOOK_SECRET", "ADMIN_PASSWORD", "DATABASE_URL"]
+
+
+def test_fly_app_is_always_on_in_the_east():
+    config = fly()
+    assert config["primary_region"] in {"iad", "ewr"}
+    service = config["http_service"]
+    # The init webhook fires while the phone rings, so it can't wait for a cold start.
+    assert service["auto_stop_machines"] == "off"
+    assert service["min_machines_running"] >= 1
+    assert service["force_https"] is True
+    assert config["vm"][0]["size"] == "shared-cpu-1x"
+
+
+def test_fly_routes_to_the_image_port_and_checks_health():
+    service = fly()["http_service"]
+    assert service["internal_port"] == 8080
+    (check,) = service["checks"]
+    assert check["path"] == "/health"
+    assert check["method"] == "GET"
+
+
+def test_fly_migrates_in_a_release_command_not_on_boot():
+    config = fly()
+    assert config["deploy"]["release_command"] == "alembic upgrade head"
+    assert config["env"]["BEAR_MIGRATE_ON_BOOT"] == "0"
+
+
+def test_fly_env_holds_no_secrets():
+    env = fly()["env"]
+    for name in SECRET_NAMES:
+        assert name not in env
+    assert all("secret" not in key.lower() and "password" not in key.lower() for key in env)
