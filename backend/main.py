@@ -75,10 +75,6 @@ class Settings:
         )
 
 
-OPEN_HOUR, CLOSE_HOUR = 8, 18  # Mon-Fri 8a-6p
-SAT_OPEN, SAT_CLOSE = 9, 14  # Sat 9a-2p, closed Sunday
-BAYS_PER_SLOT = 2
-
 STATUS_TEXT = {
     "waiting_on_parts": "waiting on parts",
     "in_progress": "being worked on right now",
@@ -499,23 +495,17 @@ def create_app() -> FastAPI:
         return re.sub(r"\D", "", s or "")[-10:]
 
     # ---------- helpers ----------
-    def slot_ok(dt: datetime) -> str | None:
-        wd = dt.weekday()
-        if wd == 6:
-            return "We're closed Sundays."
-        o, c = (SAT_OPEN, SAT_CLOSE) if wd == 5 else (OPEN_HOUR, CLOSE_HOUR)
-        if not (o <= dt.hour < c):
-            return f"That day we take drop-offs between {o}:00 and {c}:00."
-        if dt < datetime.now(default_shop.tz):
+    def slot_problem(dt: datetime) -> str | None:
+        reason = default_shop.closed_reason(dt)
+        if reason is None and dt < datetime.now(default_shop.tz):
             return "That time already passed."
-        return None
+        return reason
 
     def next_slots(start: datetime, n: int = 3) -> list[str]:
-        out, t = [], start.replace(minute=0, second=0, microsecond=0)
-        counts = store.booked_counts(settings.shop_id, t, t + timedelta(hours=24 * 14 + 1))
-        for _ in range(24 * 14):
-            t += timedelta(hours=1)
-            if slot_ok(t) is None and counts.get(t.astimezone(UTC), 0) < BAYS_PER_SLOT:
+        out = []
+        counts = store.booked_counts(settings.shop_id, start, start + timedelta(days=15))
+        for t in default_shop.upcoming_slots(start, days=14):
+            if counts.get(t.astimezone(UTC), 0) < default_shop.bays_per_slot:
                 out.append(t.strftime("%A %b %d at %I:%M %p").replace(" 0", " "))
                 if len(out) == n:
                     break
@@ -533,12 +523,12 @@ def create_app() -> FastAPI:
         dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(
             tzinfo=default_shop.tz
         )
-        problem = slot_ok(dt)
+        problem = slot_problem(dt)
         if problem is None:
             fields = req.model_dump(exclude={"preferred_date", "preferred_time"})
             try:
                 appt = store.book_appointment(
-                    settings.shop_id, dt.replace(minute=0, second=0, microsecond=0), BAYS_PER_SLOT, **fields
+                    settings.shop_id, default_shop.slot_start(dt), default_shop.bays_per_slot, **fields
                 )
             except SlotFull:
                 problem = "That slot is full."
