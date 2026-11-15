@@ -66,9 +66,13 @@ def test_tools_write_to_the_requested_shop(two_shops, payloads, tool_headers):
 def test_repair_status_only_searches_the_requested_shop(two_shops, tool_headers):
     lookup = {"last_name": "Westley", "ro_number": "7001"}
     assert call(two_shops, tool_headers, "check_repair_status", {**lookup, "shop_id": "west-shop"})["found"] is True
-    assert call(two_shops, tool_headers, "check_repair_status", lookup)["found"] is False
+    assert (
+        call(two_shops, tool_headers, "check_repair_status", {**lookup, "shop_id": "vice-city-auto"})["found"] is False
+    )
     rivera = {"last_name": "Rivera", "ro_number": "1001"}
-    assert call(two_shops, tool_headers, "check_repair_status", rivera)["found"] is True
+    assert (
+        call(two_shops, tool_headers, "check_repair_status", {**rivera, "shop_id": "vice-city-auto"})["found"] is True
+    )
     assert call(two_shops, tool_headers, "check_repair_status", {**rivera, "shop_id": "west-shop"})["found"] is False
 
 
@@ -77,7 +81,39 @@ def test_booking_uses_the_requested_shops_hours(two_shops, payloads, tool_header
     closed = call(two_shops, tool_headers, "book_appointment", {**monday, "shop_id": "west-shop"})
     assert closed["message"] == "We're closed Mondays, but I can look at another day for you."
     assert closed["alternatives"][0].startswith("Tuesday")
-    assert call(two_shops, tool_headers, "book_appointment", monday)["booked"] is True
+    assert call(two_shops, tool_headers, "book_appointment", {**monday, "shop_id": "vice-city-auto"})["booked"] is True
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_missing_shop_id_is_rejected_when_more_than_one_shop_is_loaded(two_shops, payloads, tool_headers, tool):
+    before = snapshot(two_shops)
+    result = call(two_shops, tool_headers, tool, payloads[tool])
+    assert result == {
+        "ok": False,
+        "error": "invalid_input",
+        "field": "shop_id",
+        "message": result["message"],
+    }
+    assert "shop id is missing" in result["message"].lower()
+    assert snapshot(two_shops) == before
+    assert rows(two_shops, "appointments") == rows(two_shops, "tows") == rows(two_shops, "messages") == []
+
+
+def test_missing_shop_id_is_rejected_outside_dev(make_client, payloads, tool_headers):
+    client = make_client(_shops=[{}], BEAR_ENV="prod")
+    before = snapshot(client)
+    result = call(client, tool_headers, "take_message", payloads["take_message"])
+    assert result["ok"] is False
+    assert result["error"] == "invalid_input"
+    assert result["field"] == "shop_id"
+    assert snapshot(client) == before
+
+
+def test_missing_shop_id_defaults_only_for_single_shop_dev(make_client, payloads, tool_headers):
+    client = make_client(_shops=[{}], BEAR_ENV="dev")
+    result = call(client, tool_headers, "take_message", payloads["take_message"])
+    assert result["ok"] is True and result["saved"] is True
+    assert rows(client, "messages")[0]["shop_id"] == "vice-city-auto"
 
 
 @pytest.mark.parametrize("tool", TOOLS)
@@ -112,11 +148,34 @@ def audit(client):
 
 
 def test_unknown_number_calls_can_leave_a_message(two_shops, payloads, tool_headers):
-    result = call(two_shops, tool_headers, "take_message", {**payloads["take_message"], "shop_id": "unknown"})
+    result = call(
+        two_shops,
+        tool_headers,
+        "take_message",
+        {**payloads["take_message"], "shop_id": "unknown", "conversation_id": "conv_demo-1"},
+    )
     assert result["ok"] is True and result["saved"] is True
     (message,) = board(two_shops, "unknown")["messages"]
     assert message["public_id"] == result["ticket"]
+    assert message["conversation_id"] == "conv_demo-1"
     assert rows(two_shops, "messages") == []
+
+
+def test_take_message_stores_conversation_id_and_shows_it_on_the_board(client, payloads, tool_headers):
+    from conftest import ADMIN_AUTH
+
+    result = call(
+        client,
+        tool_headers,
+        "take_message",
+        {**payloads["take_message"], "conversation_id": "conv_demo-2"},
+    )
+    assert result["saved"] is True
+    (message,) = rows(client, "messages")
+    assert message["conversation_id"] == "conv_demo-2"
+    board_page = client.get("/admin", auth=ADMIN_AUTH)
+    assert board_page.status_code == 200
+    assert "conv_demo-2" in board_page.text
 
 
 @pytest.mark.parametrize("tool", ["book_appointment", "check_repair_status", "request_tow"])

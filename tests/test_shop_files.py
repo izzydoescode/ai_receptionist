@@ -22,7 +22,7 @@ def test_there_are_shop_files():
 @pytest.mark.parametrize("file,language,message", GREETINGS)
 def test_greeting_gives_the_recording_notice_before_the_question(file, language, message):
     question = min(i for i in (message.find("?"), message.find("¿")) if i >= 0)
-    assert 0 <= fold(message).find(fold(RECORDING_NOTICES[language])) < question
+    assert 0 <= fold(message).find(fold(RECORDING_NOTICES[language][0])) < question
 
 
 AI_TELLS = (
@@ -38,3 +38,9 @@ def test_greeting_does_not_volunteer_that_bear_is_ai(file, language, message):
     lower = message.lower()
     for phrase in AI_TELLS:
         assert phrase not in lower
+
+
+def test_demo_shop_yaml_comments_distinguish_agent_and_staff_languages():
+    text = next(p for p in SHOP_FILES if p.name == "vice-city-auto.yaml").read_text("utf-8").casefold()
+    assert "what the voice agent speaks" in text
+    assert "what your staff can call back in" in text

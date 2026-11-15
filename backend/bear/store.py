@@ -21,10 +21,12 @@ class Store:
 
     @contextmanager
     def _write(self):
-        with self.engine.begin() as conn:
-            yield conn
-            if self.write_guard is not None:
-                self.write_guard()
+        with self.engine.connect() as conn:
+            conn.info["sqlite_begin"] = "IMMEDIATE"
+            with conn.begin():
+                yield conn
+                if self.write_guard is not None:
+                    self.write_guard()
 
     def _insert(self, conn, table, shop_id, prefix, created_at=None, **fields):
         values = dict(
@@ -135,22 +137,30 @@ class Store:
         else:
             from sqlalchemy.dialects.postgresql import insert as upsert
         with self._write() as conn:
-            statement = (
-                upsert(repair_orders)
-                .values(
-                    shop_id=shop_id,
-                    public_id="R" + secrets.token_hex(3).upper(),
-                    created_at=now,
-                    updated_at=now,
-                    **fields,
+            for _ in range(5):
+                public_id = "R" + secrets.token_hex(3).upper()
+                statement = (
+                    upsert(repair_orders)
+                    .values(
+                        shop_id=shop_id,
+                        public_id=public_id,
+                        created_at=now,
+                        updated_at=now,
+                        **fields,
+                    )
+                    .on_conflict_do_update(
+                        index_elements=["shop_id", "ro_number"],
+                        set_={**fields, "updated_at": now},
+                    )
+                    .returning(repair_orders)
                 )
-                .on_conflict_do_update(
-                    index_elements=["shop_id", "ro_number"],
-                    set_={**fields, "updated_at": now},
-                )
-                .returning(repair_orders)
-            )
-            return dict(conn.execute(statement).mappings().one())
+                try:
+                    with conn.begin_nested():
+                        return dict(conn.execute(statement).mappings().one())
+                except IntegrityError:
+                    if conn.scalar(select(repair_orders.c.id).where(repair_orders.c.public_id == public_id)) is None:
+                        raise
+            raise RuntimeError("could not allocate public id")
 
     def save_call_summary(self, shop_id, *, created_at=None, **fields):
         """Store one finished call. Returns None when the conversation was already saved (a webhook retry)."""
@@ -161,9 +171,10 @@ class Store:
         now = (created_at or datetime.now(UTC)).astimezone(UTC)
         with self._write() as conn:
             for _ in range(5):
+                public_id = "C" + secrets.token_hex(3).upper()
                 statement = (
                     upsert(call_summaries)
-                    .values(shop_id=shop_id, public_id="C" + secrets.token_hex(3).upper(), created_at=now, **fields)
+                    .values(shop_id=shop_id, public_id=public_id, created_at=now, **fields)
                     .on_conflict_do_nothing(index_elements=["conversation_id"])
                     .returning(call_summaries)
                 )
@@ -171,7 +182,10 @@ class Store:
                     with conn.begin_nested():
                         row = conn.execute(statement).mappings().one_or_none()
                 except IntegrityError:
-                    continue  # public_id collision; try another
+                    # A public_id collision should retry; any other constraint must surface.
+                    if conn.scalar(select(call_summaries.c.id).where(call_summaries.c.public_id == public_id)) is None:
+                        raise
+                    continue
                 if row is None:
                     return None
                 row = dict(row)

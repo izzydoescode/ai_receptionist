@@ -1,0 +1,28 @@
+name: en_unknown_shop
+language: en
+description: shop_id unknown may leave a message but cannot book.
+calls:
+  - tool: take_message
+    args:
+      shop_id: unknown
+      caller_name: Unmatched Caller
+      phone: "3055550191"
+      reason: Wrong number maybe
+    expect: {ok: true, saved: true}
+  - tool: book_appointment
+    args:
+      shop_id: unknown
+      customer_name: Unmatched Caller
+      phone: "3055550191"
+      vehicle: 2018 Toyota Corolla
+      service: oil change
+      preferred_date: "{next_monday}"
+      preferred_time: "10:00"
+    expect: {ok: false, error: unknown_shop}
+db_shop_id: unknown
+db_counts: {messages: 1, appointments: 0}
+db:
+  messages:
+    - {caller_name: Unmatched Caller}
+db_counts_by_shop:
+  vice-city-auto: {messages: 0, appointments: 0}

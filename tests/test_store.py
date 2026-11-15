@@ -7,6 +7,7 @@ from threading import Barrier
 from zoneinfo import ZoneInfo
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 SHOP = "vice-city-auto"
 SLOT = datetime(2026, 11, 16, 10, tzinfo=ZoneInfo("America/New_York"))
@@ -94,7 +95,7 @@ def test_schema_contract(engine):
         "appointments": set(APPOINTMENT) | {"slot_start", "bay"},
         "repair_orders": set(REPAIR) | {"updated_at"},
         "tows": set(TOW),
-        "messages": set(MESSAGE),
+        "messages": set(MESSAGE) | {"vehicle", "conversation_id"},
         "audit_events": {"event", "entity_public_id", "outcome"},
         "call_summaries": set(CALL),
     }
@@ -283,6 +284,17 @@ def test_public_id_collision_retries_with_new_id(store, engine, monkeypatch, ope
     assert len({row["public_id"] for row in audit_rows(engine)}) == len(audit_rows(engine))
 
 
+def test_repair_public_id_collision_retries_with_new_id(store, monkeypatch):
+    ids = iter(["ABC123", "ABC123", "DEF456"])
+    monkeypatch.setattr("bear.store.secrets.token_hex", lambda n: next(ids))
+    first = store.upsert_repair_order(SHOP, **REPAIR)
+    second = store.upsert_repair_order(SHOP, **{**REPAIR, "ro_number": "9002"})
+    assert first["public_id"] == "RABC123"
+    assert second["public_id"] == "RDEF456"
+    assert {row["ro_number"] for row in store.list_repair_orders(SHOP)} == {"9001", "9002"}
+
+
+
 def test_call_summary_is_saved_once_per_conversation(store, engine):
     first = store.save_call_summary(SHOP, **CALL)
     assert re.fullmatch(r"C[0-9A-F]{6}", first["public_id"])
@@ -300,3 +312,9 @@ def test_call_summary_optional_fields_may_be_missing(store):
         SHOP, **{**CALL, "started_at": None, "duration_secs": None, "title": None, "language": None}
     )
     assert row["started_at"] is None and row["duration_secs"] is None
+
+
+
+def test_call_summary_unrelated_integrity_error_is_not_swallowed(store):
+    with pytest.raises(IntegrityError):
+        store.save_call_summary(SHOP, **{**CALL, "outcome": None})

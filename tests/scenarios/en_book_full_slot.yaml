@@ -19,7 +19,7 @@ calls:
       vehicle: 2020 Ford Escape
       service: check engine light
       preferred_date: "{next_tuesday}"
-      preferred_time: "09:30"
+      preferred_time: "09:00"
     expect: {ok: true, booked: false, message: That time's already booked up. I can offer a few other times that are open.}
     expect_length: {alternatives: 3}
 db_counts: {appointments: 2}

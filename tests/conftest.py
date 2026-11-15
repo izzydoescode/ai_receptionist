@@ -24,6 +24,7 @@ CONFIG_KEYS = (
     "TOOL_DEADLINE_MS",
     "SHOPS_DIR",
     "INIT_WEBHOOK_SECRET",
+    "INIT_WEBHOOK_SECRET_PREVIOUS",
     "POST_CALL_WEBHOOK_SECRET",
 )
 EXAMPLE_SHOP = yaml.safe_load((Path(__file__).resolve().parents[1] / "shops/vice-city-auto.yaml").read_text("utf-8"))
@@ -57,6 +58,7 @@ def make_client(monkeypatch, tmp_path):
             monkeypatch.delenv(key, raising=False)
         settings = {
             "TOOL_SECRET": SECRET,
+            "BEAR_ENV": "dev",
             "INIT_WEBHOOK_SECRET": INIT_SECRET,
             "POST_CALL_WEBHOOK_SECRET": POST_CALL_SECRET,
             "ADMIN_PASSWORD": ADMIN_AUTH[1],

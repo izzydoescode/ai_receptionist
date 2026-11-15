@@ -9,7 +9,7 @@
 ## Settings / env
 - `DATABASE_URL` (default `sqlite:///./vicecity.db`, i.e. relative to the CWD).
 - `bear.db.normalize_database_url(url)`: `postgres://...` and `postgresql://...` become `postgresql+psycopg://...` (query string such as `?sslmode=require` preserved); `postgresql+psycopg://` and `sqlite://` URLs unchanged; empty or other schemes -> ValueError.
-- `bear.db.make_engine(url)`: normalizes; for SQLite: `check_same_thread=False`, `timeout=30`, and transactions begin with `BEGIN IMMEDIATE` (event listeners, so concurrent writers serialize instead of erroring); for Postgres: `pool_pre_ping=True` (Neon suspends idle computes).
+- `bear.db.make_engine(url, timeout_seconds=4)`: normalizes; for SQLite: `check_same_thread=False`, busy `timeout` in seconds (`create_app` passes `TOOL_DEADLINE_MS / 1000` so a locked DB cannot block a worker past the tool deadline), and transactions begin `DEFERRED` unless the connection sets `info["sqlite_begin"] = "IMMEDIATE"` (`Store._write` does this so concurrent writers serialize without also serializing reads); for Postgres: `pool_pre_ping=True` (Neon suspends idle computes).
 - `bear.db.create_schema(engine)` = metadata.create_all (used by tests/dev); production uses Alembic.
 - `SHOP_ID` env (default `vice-city-auto`; must match `^[a-z0-9][a-z0-9-]{0,63}$` else RuntimeError at create_app). Since Task 7 this is the default shop: tools use it when the body has no `shop_id`, and it must have a file in `SHOPS_DIR` (see `docs/SHOPS.md`).
 - `create_app()` builds the engine from DATABASE_URL and `app.state.store = Store(engine, write_guard=<deadline check>)`. If any of the 6 tables is missing it raises `RuntimeError` whose message contains `alembic upgrade head`. It does NOT create tables or seed data.
@@ -20,9 +20,9 @@ Every table: integer PK `id`, `shop_id` (String(64), indexed, not null), `public
 - `repair_orders`: ro_number (String(20)), customer_name, phone (E.164), plate, vehicle, status, note, eta, balance_estimate, updated_at (UTC). UNIQUE(shop_id, ro_number).
 - `appointments`: slot_start (UTC), bay (int >=1), customer_name, phone, vehicle, service, language, notes (nullable). UNIQUE(shop_id, slot_start, bay) named `uq_appointments_shop_slot_bay`.
 - `tows`: customer_name, phone, pickup_location, vehicle, issue, is_safe (bool), destination, language, status.
-- `messages`: caller_name, phone, reason, urgency, callback_language.
+- `messages`: caller_name, phone, reason, urgency, callback_language, vehicle (nullable), conversation_id (nullable).
 - `audit_events`: event (String(64)), entity_public_id (nullable), outcome (nullable String(32)). No PII columns.
-- `call_summaries` (migration `0002_call_summaries`): conversation_id (String(64), unique), started_at (nullable UTC), duration_secs (nullable int), outcome (String(16): success/failure/unknown), summary (Text), title (nullable Text), language (nullable String(8)). No transcript, audio or phone numbers; see `docs/ELEVENLABS_POST_CALL.md`.
+- `call_summaries` (migration `0004_call_summaries`): conversation_id (String(64), unique), started_at (nullable UTC), duration_secs (nullable int), outcome (String(16): success/failure/unknown), summary (Text), title (nullable Text), language (nullable String(8)). No transcript, audio or phone numbers; see `docs/ELEVENLABS_POST_CALL.md`.
 
 ## Store API (`bear.store.Store`), all methods return plain dicts (column -> value) or lists of them
 - `Store(engine, write_guard=None)`; `write_guard()` is called inside every write transaction right before commit; if it raises, the transaction is rolled back and the exception propagates.
@@ -47,6 +47,6 @@ Every table: integer PK `id`, `shop_id` (String(64), indexed, not null), `public
 
 ## Task 6 admin board
 - `GET /admin?shop=<shop_id>` (default settings.shop_id; invalid pattern -> 400 `{"detail": "invalid shop"}`; no shop file -> 404 `{"detail": "unknown shop"}`), Basic auth unchanged, everything html-escaped. Shows `store.board(shop, 50)`.
-- Columns: Appointments: id(public_id), when (slot_start), customer_name, phone, vehicle, service, language. Tows: id, created, customer_name, phone, pickup_location, issue, is_safe. Messages: id, created, caller_name, phone, reason, urgency, callback_language. Repair orders: ro, customer, vehicle, status, eta.
+- Columns: Appointments: id(public_id), when (slot_start), customer_name, phone, vehicle, service, language. Tows: id, created, customer_name, phone, pickup_location, issue, is_safe. Messages: id, created, caller_name, phone, vehicle, reason, urgency, callback_language, conversation_id. Repair orders: ro, customer, vehicle, status, eta.
 - Timestamps rendered in the requested shop's `timezone` from its config as `YYYY-MM-DD HH:MM TZ` e.g. `2026-11-16 10:00 EST`.
 - Title/heading use the requested shop's `name`; the board shows only the requested shop's rows.

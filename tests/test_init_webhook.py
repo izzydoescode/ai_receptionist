@@ -176,3 +176,14 @@ def test_init_responds_well_under_the_ring_budget(init_client):
         timings.append(time.perf_counter() - start)
     # ElevenLabs fetches during the ring; the target is 300 ms. In-process calls are far below it.
     assert max(timings) < 0.3
+
+
+def test_previous_init_secret_is_accepted_during_rotation(make_client):
+    previous = "p" * 40
+    current = "n" * 40
+    client = make_client(_seed=False, INIT_WEBHOOK_SECRET=current, INIT_WEBHOOK_SECRET_PREVIOUS=previous)
+    for secret in (current, previous):
+        response = init(client, body(), headers={"X-Init-Webhook-Secret": secret})
+        assert response["dynamic_variables"]["shop_id"] == "vice-city-auto"
+    denied = client.post(URL, json=body(), headers={"X-Init-Webhook-Secret": INIT_SECRET})
+    assert denied.status_code == 401

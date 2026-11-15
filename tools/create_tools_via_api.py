@@ -9,6 +9,8 @@ import hmac
 import json
 import os
 import re
+import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -42,6 +44,7 @@ def main(tools_dir=None, environ=None):
             "rerun make_tools.py first (see tools/README.md)."
         )
     ids = []
+    created = []
     for path, config in configs.items():
         config["api_schema"]["request_headers"]["X-Tool-Secret"] = reference
         req = urllib.request.Request(
@@ -50,9 +53,26 @@ def main(tools_dir=None, environ=None):
             method="POST",
             headers={"xi-api-key": key, "Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=30) as response:
-            tool_id = json.loads(response.read()).get("id")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                tool_id = json.loads(response.read()).get("id")
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", errors="replace")
+            try:
+                payload = json.loads(detail)
+                detail = payload.get("detail", detail)
+            except ValueError:
+                pass
+            print(f"HTTP {error.code} creating {path.name}: {detail}", file=sys.stderr)
+            if created:
+                print(
+                    "Already created (delete these before retrying to avoid duplicates): "
+                    + ", ".join(f"{name}={tool_id}" for name, tool_id in created),
+                    file=sys.stderr,
+                )
+            raise SystemExit(f"ElevenLabs returned HTTP {error.code}") from None
         ids.append(tool_id)
+        created.append((path.stem, tool_id))
         print(path, "->", tool_id)
     print("Now add these tool IDs to your agent (Agent > Tools) and Publish.")
     return ids

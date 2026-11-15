@@ -3,8 +3,8 @@
 from alembic import op
 from sqlalchemy import Column, DateTime, Integer, String, Text
 
-revision = "0002_call_summaries"
-down_revision = "0001_initial"
+revision = "0004_call_summaries"
+down_revision = "0003_message_conversation_id"
 branch_labels = None
 depends_on = None
 
