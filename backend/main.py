@@ -125,8 +125,13 @@ def normalize_name(value: str) -> str:
 # ---------- validation and transport ----------
 def clean_text(value):
     if isinstance(value, str):
-        value = "".join(" " if unicodedata.category(c) == "Cc" else c for c in value)
-        return " ".join(value.split())
+        chars = []
+        for char in value:
+            category = unicodedata.category(char)
+            if category == "Cf":
+                continue  # zero-width, bidi controls, BOM
+            chars.append(" " if category == "Cc" else char)
+        return " ".join("".join(chars).split())
     return value
 
 

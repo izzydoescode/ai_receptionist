@@ -209,6 +209,27 @@ def test_controls_cleaned(client, tool_headers, payloads, tool, field, limit, co
     assert accept(client, tool_headers, payloads, tool, **{field: value})[field] == "Ana [31mGomez"
 
 
+FORMAT_CHARS = [
+    "\u200b",  # ZERO WIDTH SPACE
+    "\u200c",  # ZERO WIDTH NON-JOINER
+    "\u200d",  # ZERO WIDTH JOINER
+    "\u200e",  # LEFT-TO-RIGHT MARK
+    "\u200f",  # RIGHT-TO-LEFT MARK
+    "\u202a",  # LEFT-TO-RIGHT EMBEDDING
+    "\u202e",  # RIGHT-TO-LEFT OVERRIDE
+    "\u2066",  # LEFT-TO-RIGHT ISOLATE
+    "\u2069",  # POP DIRECTIONAL ISOLATE
+    "\ufeff",  # BOM
+]
+
+
+@pytest.mark.parametrize("tool,field,limit", TEXT_LIMITS)
+@pytest.mark.parametrize("mark", FORMAT_CHARS)
+def test_format_characters_are_stripped(client, tool_headers, payloads, tool, field, limit, mark):
+    value = f"  Ana{mark}Gomez  "
+    assert accept(client, tool_headers, payloads, tool, **{field: value})[field] == "AnaGomez"
+
+
 @pytest.mark.parametrize("tool,field", REQUIRED_TEXT)
 @pytest.mark.parametrize("value", ["", " \t\n\x00 "])
 def test_required_text_empty_after_cleaning(client, tool_headers, payloads, tool, field, value):
