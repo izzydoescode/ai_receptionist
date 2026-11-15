@@ -1,0 +1,59 @@
+{
+  "type": "webhook",
+  "name": "take_message",
+  "description": "Leave a message for the service writer/owner: after hours, estimate requests needing a human, unknown questions, failed transfers, or Haitian Creole callers who want a Creole-speaking callback.",
+  "response_timeout_secs": 10,
+  "api_schema": {
+    "url": "https://bear.example.test/tools/take_message",
+    "method": "POST",
+    "request_headers": {
+      "Content-Type": "application/json",
+      "X-Tool-Secret": {
+        "secret_id": "sec_fixture"
+      },
+      "X-Conversation-Id": {
+        "variable_name": "system__conversation_id"
+      }
+    },
+    "request_body_schema": {
+      "type": "object",
+      "description": "Arguments for take_message",
+      "properties": {
+        "caller_name": {
+          "type": "string",
+          "description": "Caller's name"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Callback number, digits only"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Short summary of what they need, in English"
+        },
+        "urgency": {
+          "type": "string",
+          "description": "low, normal or high"
+        },
+        "callback_language": {
+          "type": "string",
+          "description": "Language for the callback: en, es, ht (Haitian Creole) or fr"
+        },
+        "vehicle": {
+          "type": "string",
+          "description": "Year make model if relevant"
+        },
+        "shop_id": {
+          "type": "string",
+          "dynamic_variable": "shop_id"
+        }
+      },
+      "required": [
+        "caller_name",
+        "phone",
+        "reason",
+        "shop_id"
+      ]
+    }
+  }
+}

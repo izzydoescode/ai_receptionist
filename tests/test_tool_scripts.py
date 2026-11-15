@@ -170,3 +170,27 @@ def test_tools_send_the_conversation_id_header_from_a_system_variable(generated_
         assert headers_of(generated_tools, path.stem)["X-Conversation-Id"] == {
             "variable_name": "system__conversation_id"
         }
+
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures/tools"
+FIXTURE_ENV = {"PUBLIC_BASE_URL": "https://bear.example.test", "ELEVENLABS_TOOL_SECRET_ID": "sec_fixture"}
+
+
+def test_generated_json_matches_the_fixture_exactly(tmp_path):
+    import difflib
+
+    load_script("make_tools").main(out_dir=tmp_path, environ=FIXTURE_ENV)
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(p.name for p in FIXTURES.iterdir())
+    for fixture in FIXTURES.glob("*.json"):
+        expected = fixture.read_text("utf-8").splitlines()
+        actual = (tmp_path / fixture.name).read_text("utf-8").splitlines()
+        assert actual == expected, "\n".join(
+            difflib.unified_diff(expected, actual, "fixture", "generated", lineterm="")
+        )
+
+
+@pytest.mark.parametrize("directory", [FIXTURES, TOOLS_SRC])
+def test_tool_json_round_trips(directory):
+    for path in directory.glob("*.json"):
+        text = path.read_text("utf-8")
+        assert json.dumps(json.loads(text), indent=2, ensure_ascii=False) == text
