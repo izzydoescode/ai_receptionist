@@ -38,6 +38,7 @@ curl http://localhost:8080/health
 |---|---|---|---|
 | `TOOL_SECRET` | `fly secrets set` | yes | Shared secret ElevenLabs sends in `X-Tool-Secret` on every `/tools/*` call. At least 32 characters. Store the same value as an ElevenLabs workspace secret (`tools/README.md`). |
 | `INIT_WEBHOOK_SECRET` | `fly secrets set` | yes | Shared secret ElevenLabs sends in `X-Init-Webhook-Secret` to `POST /elevenlabs/init`. At least 32 characters, and different from `TOOL_SECRET` (`docs/ELEVENLABS_INIT.md`). |
+| `INIT_WEBHOOK_SECRET_PREVIOUS` | `fly secrets set` (optional) | no | Previous init secret, also accepted during rotation so you can update ElevenLabs and the server in either order. If set, same 32-character and not-`TOOL_SECRET` rules. |
 | `DATABASE_URL` | `fly secrets set` | yes on Fly | The Neon connection string, `postgresql://…?sslmode=require`. `postgres://` and `postgresql://` are turned into `postgresql+psycopg://` automatically. The image's default, `sqlite:////data/bear.db`, doesn't persist on Fly without a volume. |
 | `ADMIN_PASSWORD` | `fly secrets set` | for `/admin` | HTTP Basic password for the board. If unset, `/admin` returns 503. |
 | `ADMIN_USER` | `fly secrets set` (optional) | no | HTTP Basic username. Default `admin`. |
