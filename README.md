@@ -64,7 +64,7 @@ Reset between runs (only when `BEAR_ENV=dev`): `curl -u "admin:$ADMIN_PASSWORD" 
 - `tests/`: pytest suite (auth, admin escaping, repair-status verification, tool behaviour, tool scripts)
 - `.env.example`: every environment variable with placeholder values
 - `shops/*.yaml`: one config file per shop (hours, holidays, bays, numbers, languages, voices, greetings). See `docs/SHOPS.md`; `vice-city-auto.yaml` is the made-up demo shop
-- `tools/*.json`: ElevenLabs webhook tool configs. `make_tools.py` regenerates them from `PUBLIC_BASE_URL` and the secret's id, and `create_tools_via_api.py` is an optional API upload. Setup steps: `tools/README.md`
+- `tools/*.json`: ElevenLabs webhook tool configs. `make_tools.py` regenerates them from `PUBLIC_BASE_URL`, and `create_tools_via_api.py` is an optional API upload that adds the tool secret's id. Setup steps: `tools/README.md`
 - `agent/system_prompt.md`: persona, language rules, the 6 call flows, guardrails, and first messages in EN/ES/FR/HT
 - `agent/agent_config_notes.md`: settings, voice picking, Voice Design prompts, transfer rule
 

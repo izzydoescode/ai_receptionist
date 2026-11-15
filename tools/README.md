@@ -2,16 +2,17 @@
 
 `tools/*.json` are the four webhook tools Bear calls: `book_appointment`, `check_repair_status`, `request_tow` and `take_message`. `make_tools.py` generates them. Don't edit the JSON by hand. Change `make_tools.py`, regenerate, and commit both.
 
-## What the generator needs
-| Env var | Example | Used for |
-|---|---|---|
-| `PUBLIC_BASE_URL` | `https://bear.example.com` | Each tool URL becomes `<PUBLIC_BASE_URL>/tools/<name>`. It must be an `https://` origin with no path. `http://` is only allowed for `localhost` or `127.0.0.1`. |
-| `ELEVENLABS_TOOL_SECRET_ID` | `sec_...` | The **id** of the ElevenLabs workspace secret that holds `TOOL_SECRET`. The JSON stores only `{"secret_id": ...}`, never the secret itself. The script refuses to run if this id equals `TOOL_SECRET`. |
+## What the scripts need
+| Env var | Script | Example | Used for |
+|---|---|---|---|
+| `PUBLIC_BASE_URL` | `make_tools.py` | `https://bear.example.com` | Each tool URL becomes `<PUBLIC_BASE_URL>/tools/<name>`. It must be an `https://` origin with no path. `http://` is only allowed for `localhost` or `127.0.0.1`. If unset, the URL is the placeholder `https://YOUR-BACKEND-HOST`. |
+| `ELEVENLABS_TOOL_SECRET_ID` | `create_tools_via_api.py` | `sec_...` | The **id** of the ElevenLabs workspace secret that holds `TOOL_SECRET`. The script adds it to each config as `{"secret_id": ...}` in memory, just before uploading, and refuses to run if it equals `TOOL_SECRET`. |
+| `ELEVENLABS_API_KEY` | `create_tools_via_api.py` | | API auth. |
 
-If these aren't set, the committed files use the placeholders `https://YOUR-BACKEND-HOST` and `YOUR-TOOL-SECRET-ID`. `create_tools_via_api.py` refuses to upload files that still contain placeholders.
+On disk, `X-Tool-Secret` is always `{"secret_id": "YOUR-TOOL-SECRET-ID"}`, so no secret value or secret id is ever written to a file. `create_tools_via_api.py` refuses to upload configs that still have the placeholder URL.
 
 ```bash
-PUBLIC_BASE_URL=https://bear.example.com ELEVENLABS_TOOL_SECRET_ID=sec_abc123 python tools/make_tools.py
+PUBLIC_BASE_URL=https://bear.example.com python tools/make_tools.py
 ```
 
 Each generated tool has:
@@ -20,7 +21,7 @@ Each generated tool has:
 - a `response_timeout_secs` of 10
 
 ## Manual setup (ElevenLabs dashboard)
-1. **Store the secret.** In Workspace settings → Secrets, add a secret whose value is the backend's `TOOL_SECRET`. Copy its id into `ELEVENLABS_TOOL_SECRET_ID`.
+1. **Store the secret.** In Workspace settings → Secrets, add a secret whose value is the backend's `TOOL_SECRET`. For the API route below, note its id.
 2. **Generate the configs** with the command above, pointed at the deployed backend.
 3. **Create each tool.** Go to Agent → Tools → Add tool → Webhook, then:
    - Copy the name, description, method `POST` and URL from the JSON.
@@ -31,14 +32,14 @@ Each generated tool has:
 
 ## Or create them through the API
 ```bash
-ELEVENLABS_API_KEY=... python tools/create_tools_via_api.py
+ELEVENLABS_API_KEY=... ELEVENLABS_TOOL_SECRET_ID=sec_... python tools/create_tools_via_api.py
 ```
-This posts each JSON file to `POST /v1/convai/tools` and prints the new tool ids. Add those ids to the agent and publish. It hasn't been run against the live API yet, so check the tools in the dashboard afterwards.
+This fills in the secret reference and posts each config to `POST /v1/convai/tools` and prints the new tool ids. Add those ids to the agent and publish. It hasn't been run against the live API yet, so check the tools in the dashboard afterwards.
 
 ## Tests
-`tests/test_tool_scripts.py` regenerates the configs and checks them two ways. It diffs them against `tests/fixtures/tools/` (fixed URL and secret id), and it checks that every JSON file round-trips exactly. If you change the generator, regenerate both the committed files and the fixtures:
+`tests/test_tool_scripts.py` regenerates the configs and checks them two ways. It diffs them against `tests/fixtures/tools/` (fixed URL), and it checks that every JSON file round-trips exactly. If you change the generator, regenerate both the committed files and the fixtures:
 
 ```bash
-env -u PUBLIC_BASE_URL -u ELEVENLABS_TOOL_SECRET_ID python tools/make_tools.py
-python -c "import sys; sys.path.insert(0, 'tools'); import make_tools; make_tools.main(out_dir='tests/fixtures/tools', environ={'PUBLIC_BASE_URL': 'https://bear.example.test', 'ELEVENLABS_TOOL_SECRET_ID': 'sec_fixture'})"
+env -u PUBLIC_BASE_URL python tools/make_tools.py
+python -c "import sys; sys.path.insert(0, 'tools'); import make_tools; make_tools.main(out_dir='tests/fixtures/tools', environ={'PUBLIC_BASE_URL': 'https://bear.example.test'})"
 ```
