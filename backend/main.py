@@ -54,6 +54,7 @@ class Settings:
     shop_id: str
     shops_dir: str = str(DEFAULT_SHOPS_DIR)
     init_webhook_secret: str = ""
+    init_webhook_secret_previous: str = ""
     tool_deadline_ms: int = 4000
     admin_user: str = "admin"
 
@@ -69,6 +70,7 @@ class Settings:
             tool_deadline_ms=deadline_ms,
             tool_secret=os.getenv("TOOL_SECRET", ""),
             init_webhook_secret=os.getenv("INIT_WEBHOOK_SECRET", ""),
+            init_webhook_secret_previous=os.getenv("INIT_WEBHOOK_SECRET_PREVIOUS", ""),
             env=os.getenv("BEAR_ENV", ""),
             admin_user=os.getenv("ADMIN_USER", "admin"),
             admin_password=os.getenv("ADMIN_PASSWORD", ""),
@@ -512,6 +514,14 @@ def create_app() -> FastAPI:
         )
     if settings.init_webhook_secret and settings.init_webhook_secret == settings.tool_secret:
         raise RuntimeError("INIT_WEBHOOK_SECRET must differ from TOOL_SECRET")
+    if settings.init_webhook_secret_previous:
+        if settings.env != "dev" and len(settings.init_webhook_secret_previous) < 32:
+            raise RuntimeError(
+                "INIT_WEBHOOK_SECRET_PREVIOUS must be set to at least 32 characters "
+                "(or set BEAR_ENV=dev for local testing)"
+            )
+        if settings.init_webhook_secret_previous == settings.tool_secret:
+            raise RuntimeError("INIT_WEBHOOK_SECRET_PREVIOUS must differ from TOOL_SECRET")
     if not settings.init_webhook_secret:
         logging.getLogger("bear").warning("INIT_WEBHOOK_SECRET is unset; the init webhook is open in dev")
 
@@ -588,9 +598,13 @@ def create_app() -> FastAPI:
             raise unauthorized
 
     def check_init_secret(x_init_webhook_secret: str | None = Header(default=None)):
-        if settings.init_webhook_secret and not hmac.compare_digest(
-            (x_init_webhook_secret or "").encode("utf-8"), settings.init_webhook_secret.encode("utf-8")
-        ):
+        if not settings.init_webhook_secret:
+            return
+        provided = (x_init_webhook_secret or "").encode("utf-8")
+        matched = hmac.compare_digest(provided, settings.init_webhook_secret.encode("utf-8"))
+        if settings.init_webhook_secret_previous:
+            matched = hmac.compare_digest(provided, settings.init_webhook_secret_previous.encode("utf-8")) | matched
+        if not matched:
             raise HTTPException(status_code=401, detail="bad init webhook secret")
 
     def digits(s: str | None) -> str:

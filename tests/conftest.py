@@ -23,6 +23,7 @@ CONFIG_KEYS = (
     "TOOL_DEADLINE_MS",
     "SHOPS_DIR",
     "INIT_WEBHOOK_SECRET",
+    "INIT_WEBHOOK_SECRET_PREVIOUS",
 )
 EXAMPLE_SHOP = yaml.safe_load((Path(__file__).resolve().parents[1] / "shops/vice-city-auto.yaml").read_text("utf-8"))
 
