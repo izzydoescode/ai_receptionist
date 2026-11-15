@@ -36,12 +36,17 @@
         "vehicle": {
           "type": "string",
           "description": "Year make model if relevant"
+        },
+        "shop_id": {
+          "type": "string",
+          "dynamic_variable": "shop_id"
         }
       },
       "required": [
         "caller_name",
         "phone",
-        "reason"
+        "reason",
+        "shop_id"
       ]
     }
   }

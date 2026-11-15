@@ -184,7 +184,12 @@ def test_generator_repair_status_schema_requires_last_name():
 
 def test_committed_repair_status_properties():
     config = json.loads((ROOT / "tools/check_repair_status.json").read_text())
-    assert set(config["api_schema"]["request_body_schema"]["properties"]) == {"last_name", "phone", "ro_number"}
+    assert set(config["api_schema"]["request_body_schema"]["properties"]) == {
+        "last_name",
+        "phone",
+        "ro_number",
+        "shop_id",
+    }
 
 
 def test_repair_status_prompt_requires_last_name_without_plate():

@@ -20,10 +20,10 @@ def load_script(name):
 
 
 REQUIRED = {
-    "book_appointment": ["customer_name", "phone", "vehicle", "service", "preferred_date", "preferred_time"],
-    "check_repair_status": ["last_name"],
-    "request_tow": ["customer_name", "phone", "vehicle", "pickup_location", "issue", "is_safe"],
-    "take_message": ["caller_name", "phone", "reason"],
+    "book_appointment": ["customer_name", "phone", "vehicle", "service", "preferred_date", "preferred_time", "shop_id"],
+    "check_repair_status": ["last_name", "shop_id"],
+    "request_tow": ["customer_name", "phone", "vehicle", "pickup_location", "issue", "is_safe", "shop_id"],
+    "take_message": ["caller_name", "phone", "reason", "shop_id"],
 }
 
 
@@ -44,6 +44,15 @@ def test_generator_writes_four_post_schemas_with_required_fields(generated_tools
         assert schema["url"] == f"https://example.test/tools/{path.stem}"
         assert schema["method"] == "POST"
         assert schema["request_body_schema"]["required"] == REQUIRED[path.stem]
+
+
+def test_shop_id_is_bound_to_the_dynamic_variable_not_the_llm(generated_tools):
+    for path in generated_tools.glob("*.json"):
+        properties = json.loads(path.read_text())["api_schema"]["request_body_schema"]["properties"]
+        # ElevenLabs fills a property with dynamic_variable from the conversation; it has no
+        # description, so the LLM is never asked to supply it.
+        assert properties["shop_id"] == {"type": "string", "dynamic_variable": "shop_id"}
+        assert all("dynamic_variable" not in spec for name, spec in properties.items() if name != "shop_id")
 
 
 def test_generator_defaults_to_placeholder_base_url(tmp_path):

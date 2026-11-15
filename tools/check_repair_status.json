@@ -24,10 +24,15 @@
         "ro_number": {
           "type": "string",
           "description": "Repair order (RO) / ticket number"
+        },
+        "shop_id": {
+          "type": "string",
+          "dynamic_variable": "shop_id"
         }
       },
       "required": [
-        "last_name"
+        "last_name",
+        "shop_id"
       ]
     }
   }

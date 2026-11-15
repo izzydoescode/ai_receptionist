@@ -44,6 +44,10 @@
         "notes": {
           "type": "string",
           "description": "Anything else useful: symptoms, insurance claim, needs a ride, etc."
+        },
+        "shop_id": {
+          "type": "string",
+          "dynamic_variable": "shop_id"
         }
       },
       "required": [
@@ -52,7 +56,8 @@
         "vehicle",
         "service",
         "preferred_date",
-        "preferred_time"
+        "preferred_time",
+        "shop_id"
       ]
     }
   }

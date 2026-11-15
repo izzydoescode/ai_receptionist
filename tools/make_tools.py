@@ -19,6 +19,11 @@ def B(d):
     return {"type": "boolean", "description": d}
 
 
+# Filled by ElevenLabs from the shop_id dynamic variable the init webhook returns (Task 8).
+# A property with dynamic_variable and no description is never shown to the LLM.
+SHOP_ID = {"type": "string", "dynamic_variable": "shop_id"}
+
+
 TOOLS = {
     "book_appointment": (
         "Book a drop-off appointment at the shop. Call ONLY after you have collected and read back name, phone, vehicle, service, date and time. If it returns booked=false, offer the alternatives it gives.",
@@ -95,8 +100,8 @@ def main(argv=None, out_dir=None):
                 "request_body_schema": {
                     "type": "object",
                     "description": f"Arguments for {name}",
-                    "properties": props,
-                    "required": req,
+                    "properties": {**props, "shop_id": SHOP_ID},
+                    "required": [*req, "shop_id"],
                 },
             },
         }
