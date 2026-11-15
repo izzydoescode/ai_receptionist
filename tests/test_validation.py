@@ -183,7 +183,7 @@ def test_date_beyond_60_days(client, tool_headers, payloads, frozen_today):
     )
 
 
-@pytest.mark.parametrize("time", ["10:00", "09:30"])
+@pytest.mark.parametrize("time", ["10:00", "14:00"])
 def test_exactly_60_days_accepted(client, tool_headers, payloads, frozen_today, time):
     accept(
         client,

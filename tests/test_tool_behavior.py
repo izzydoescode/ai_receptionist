@@ -52,12 +52,29 @@ def test_unavailable_booking_returns_business_failure(client, payloads, tool_hea
 def test_third_booking_in_same_hour_is_full_with_three_alternatives(client, payloads, tool_headers):
     payload = payloads["book_appointment"]
     assert post(client, tool_headers, "book_appointment", payload)["booked"] is True
-    # Capacity is per hour, including bookings at a different minute.
-    assert post(client, tool_headers, "book_appointment", {**payload, "preferred_time": "10:30"})["booked"] is True
+    assert post(client, tool_headers, "book_appointment", payload)["booked"] is True
     result = post(client, tool_headers, "book_appointment", payload)
     assert result["booked"] is False
     assert result["message"] == "That slot is full."
     assert len(result["alternatives"]) == 3
+
+
+def test_off_hour_booking_time_is_rejected(client, payloads, tool_headers):
+    response = client.post(
+        "/tools/book_appointment",
+        json={**payloads["book_appointment"], "preferred_time": "10:30"},
+        headers=tool_headers,
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result == {
+        "ok": False,
+        "error": "invalid_input",
+        "field": "preferred_time",
+        "message": result["message"],
+    }
+    assert "on the hour" in result["message"].lower()
+    assert rows(client, "appointments") == []
 
 
 @pytest.mark.parametrize("shop_name", [None, "Another Demo Shop"])

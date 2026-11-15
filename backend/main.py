@@ -585,6 +585,8 @@ def create_app() -> FastAPI:
         dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(
             tzinfo=settings.shop_tz
         )
+        if dt.minute or dt.second or dt.microsecond:
+            return invalid_input("preferred_time", "I need a time on the hour, like 09:00 or 14:00.")
         problem = slot_ok(dt)
         if problem is None:
             fields = req.model_dump(exclude={"preferred_date", "preferred_time"})
