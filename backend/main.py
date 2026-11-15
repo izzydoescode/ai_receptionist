@@ -9,6 +9,10 @@ Expose: ngrok http 8000   (then paste https://<id>.ngrok-free.app/tools/... into
 """
 from __future__ import annotations
 
+import asyncio
+import contextvars
+import sys
+import time
 import base64
 import binascii
 import hmac
@@ -20,7 +24,7 @@ import re
 import uuid
 import unicodedata
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Literal, Optional
 from zoneinfo import ZoneInfo
@@ -38,13 +42,21 @@ class Settings:
     env: str
     admin_password: str
     data_file: Path
+    tool_deadline_ms: int = 4000
     admin_user: str = "admin"
     shop_name: str = "Vice City Auto"
     shop_tz: ZoneInfo = ZoneInfo("America/New_York")
 
     @classmethod
     def from_env(cls) -> Settings:
+        try:
+            deadline_ms = int(os.getenv("TOOL_DEADLINE_MS", "4000"))
+            if deadline_ms <= 0:
+                raise ValueError
+        except ValueError:
+            raise RuntimeError("TOOL_DEADLINE_MS must be a positive integer") from None
         return cls(
+            tool_deadline_ms=deadline_ms,
             tool_secret=os.getenv("TOOL_SECRET", ""),
             env=os.getenv("BEAR_ENV", ""),
             admin_user=os.getenv("ADMIN_USER", "admin"),
@@ -212,6 +224,140 @@ def validation_message(field, error):
     return hints.get(field, f"{label} is required.")
 
 
+# Only derived, allowlisted fields belong in request logs; never log exceptions or bodies.
+_REQUEST_DEADLINE = contextvars.ContextVar("tool_deadline", default=None)
+_TOOL_NAMES = {"book_appointment", "check_repair_status", "request_tow", "take_message"}
+_CORRELATION_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
+
+
+class _DeadlineExceeded(Exception):
+    """Private signal preventing an abandoned worker from persisting changes."""
+
+
+def read_db(path: Path) -> Optional[dict]:
+    """Read the data seam on every load, including the initial seed."""
+    try:
+        return json.loads(path.read_text())
+    except FileNotFoundError:
+        return None
+
+
+def configure_logging():
+    """Write plain JSON to stdout without interfering with log capture."""
+    logger = logging.getLogger("bear")
+    handlers = [h for h in logger.handlers if h.name == "bear-json"]
+    for handler in handlers:
+        logger.removeHandler(handler)
+        handler.close()
+    handler = logging.StreamHandler(sys.stdout)
+    handler.name = "bear-json"
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = True
+
+
+class RequestLoggingMiddleware:
+    """Bound tool work and log only metadata, validated IDs and masked phones."""
+
+    def __init__(self, app, deadline_ms):
+        self.app = app
+        self.deadline_seconds = deadline_ms / 1000
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        start = time.monotonic()
+        path, method = scope["path"], scope["method"]
+        is_tool = method == "POST" and path.startswith("/tools/")
+        name = path[len("/tools/"):] if is_tool else None
+        headers = dict(scope["headers"])
+
+        def correlation(key):
+            value = headers.get(key, b"").decode("latin-1")
+            return value if _CORRELATION_ID.fullmatch(value) else None
+
+        request_id = correlation(b"x-request-id") or uuid.uuid4().hex
+        entry = {"request_id": request_id, "method": method, "path": path,
+                 "tool": name if name in _TOOL_NAMES else None}
+        conversation_id = correlation(b"x-conversation-id")
+        if conversation_id:
+            entry["conversation_id"] = conversation_id
+        status, body, abandoned = 500, bytearray(), False
+
+        async def capture(message):
+            nonlocal status
+            if message["type"] == "http.response.start":
+                status = message["status"]
+                message = dict(message)
+                message["headers"] = [(k, v) for k, v in message.get("headers", [])
+                                      if k.lower() != b"x-request-id"] + [(b"x-request-id", request_id.encode("ascii"))]
+            elif message["type"] == "http.response.body" and is_tool:
+                body.extend(message.get("body", b""))
+            await send(message)
+
+        async def downstream_send(message):
+            if not abandoned:
+                await capture(message)
+
+        async def run_tool():
+            try:
+                await self.app(scope, receive, downstream_send)
+            except Exception as exc:
+                if not abandoned:
+                    entry["exc_type"] = type(exc).__name__
+                    await JSONResponse({"ok": False, "error": "internal_error",
+                        "message": "Sorry, something went wrong on our end. Let me take a message."})(scope, receive, downstream_send)
+
+        token = _REQUEST_DEADLINE.set(start + self.deadline_seconds if is_tool else None)
+        try:
+            if is_tool:
+                task = asyncio.create_task(run_tool())
+                # Shielding lets us return promptly even while a sync worker is running.
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), max(0, start + self.deadline_seconds - time.monotonic()))
+                except asyncio.TimeoutError:
+                    abandoned = True
+                    task.cancel()
+                    task.add_done_callback(self._consume_task)
+                    body.clear()
+                    await JSONResponse({"ok": False, "error": "timeout",
+                        "message": "Sorry, our system is slow right now. Let me take a message."})(scope, receive, capture)
+            else:
+                await self.app(scope, receive, capture)
+        finally:
+            _REQUEST_DEADLINE.reset(token)
+            result = {}
+            if is_tool and status == 200:
+                try:
+                    result = json.loads(body)
+                except ValueError:
+                    pass
+            entry.update(ts=datetime.now(timezone.utc).isoformat(), level="info", event="request",
+                         status=status, latency_ms=round((time.monotonic() - start) * 1000, 1),
+                         ok=result.get("ok", 200 <= status < 300))
+            error = {401: "unauthorized", 400: "transport", 413: "transport", 415: "transport",
+                     404: "not_found", 503: "unavailable"}.get(status)
+            if result.get("error") in {"invalid_input", "timeout", "internal_error"}:
+                error = result["error"]
+                if error == "invalid_input":
+                    entry["field"] = result["field"]
+            if error:
+                entry["error"] = error
+            phone = scope.get("state", {}).get("bear_body", {}).get("phone")
+            if isinstance(phone, (str, int)) and not isinstance(phone, bool):
+                digits = re.sub(r"\D", "", str(phone))
+                if len(digits) >= 4:
+                    entry["phone"] = "***" + digits[-4:]
+            logging.getLogger("bear.request").info(json.dumps(entry, separators=(",", ":"), ensure_ascii=True))
+
+    @staticmethod
+    def _consume_task(task):
+        """Retrieve abandoned errors without logging their potentially private text."""
+        if not task.cancelled():
+            task.exception()
+
+
 class ToolTransportMiddleware:
     def __init__(self, app):
         self.app = app
@@ -251,6 +397,8 @@ class ToolTransportMiddleware:
         if not isinstance(parsed, dict):
             return await reject(400, "invalid JSON body")
 
+        scope.setdefault("state", {})["bear_body"] = parsed
+
         async def replay():
             return {"type": "http.request", "body": bytes(body), "more_body": False}
 
@@ -258,6 +406,7 @@ class ToolTransportMiddleware:
 
 
 def create_app() -> FastAPI:
+    configure_logging()
     settings = Settings.from_env()
     if settings.env != "dev" and len(settings.tool_secret) < 32:
         raise RuntimeError("TOOL_SECRET must be set to at least 32 characters (or set BEAR_ENV=dev for local testing)")
@@ -267,6 +416,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title=f"{settings.shop_name} AI Receptionist tools", version="0.1.0")
     app.state.settings = settings
     app.add_middleware(ToolTransportMiddleware)
+    app.add_middleware(RequestLoggingMiddleware, deadline_ms=settings.tool_deadline_ms)
 
     @app.exception_handler(RequestValidationError)
     async def tool_validation_error(request, exc):
@@ -305,12 +455,16 @@ def create_app() -> FastAPI:
             raise unauthorized
 
     def load() -> dict:
-        if settings.data_file.exists():
-            return json.loads(settings.data_file.read_text())
+        db = read_db(settings.data_file)
+        if db is not None:
+            return db
         save(SEED)
         return json.loads(json.dumps(SEED))
 
     def save(db: dict) -> None:
+        deadline = _REQUEST_DEADLINE.get()
+        if deadline is not None and time.monotonic() >= deadline:
+            raise _DeadlineExceeded
         settings.data_file.write_text(json.dumps(db, indent=2, ensure_ascii=False))
 
     def digits(s: Optional[str]) -> str:
