@@ -615,11 +615,14 @@ def create_app() -> FastAPI:
         shop = settings.shop_id if shop is None else shop
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", shop):
             raise HTTPException(status_code=400, detail="invalid shop")
+        if shop not in shops:
+            raise HTTPException(status_code=404, detail="unknown shop")
+        config = shops[shop]
         db = store.board(shop, 50)
 
         def display(value):
             if isinstance(value, datetime):
-                return value.astimezone(default_shop.tz).strftime("%Y-%m-%d %H:%M %Z")
+                return value.astimezone(config.tz).strftime("%Y-%m-%d %H:%M %Z")
             return str(value)
 
         def table(rows, cols):
@@ -630,10 +633,10 @@ def create_app() -> FastAPI:
             )
             return f"<table><tr>{h}</tr>{b}</table>"
 
-        return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(default_shop.name), quote=True)} board</title>
+        return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(config.name), quote=True)} board</title>
     <style>body{{font-family:system-ui;margin:24px}}table{{border-collapse:collapse;margin-bottom:24px}}
     td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}</style></head><body>
-    <h1>{html.escape(str(default_shop.name), quote=True)}: AI receptionist live board</h1>
+    <h1>{html.escape(str(config.name), quote=True)}: AI receptionist live board</h1>
     <h2>Appointments</h2>{table(db["appointments"], ["public_id", "slot_start", "customer_name", "phone", "vehicle", "service", "language"])}
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
     <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "reason", "urgency", "callback_language"])}
