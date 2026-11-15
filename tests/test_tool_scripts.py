@@ -85,3 +85,25 @@ def test_api_creator_posts_each_generated_config_with_dummy_key(generated_tools,
         assert request.get_method() == "POST"
         assert {key.lower(): value for key, value in request.header_items()}["xi-api-key"] == dummy_key
         assert json.loads(request.data) == {"tool_config": json.loads((generated_tools / f"{name}.json").read_text())}
+
+def test_tool_descriptions_explain_ok_false():
+    tools = load_script("make_tools").TOOLS
+    for name, (description, _props, _required) in tools.items():
+        assert "invalid_input" in description
+        assert "timeout" in description
+        assert "internal_error" in description
+        lower = description.lower()
+        assert "re-ask" in lower
+        if name == "take_message":
+            assert "call them back" in lower or "call back" in lower
+        else:
+            assert "take a message" in lower
+
+
+def test_prompt_tells_agent_what_to_do_when_a_tool_fails():
+    prompt = (Path(__file__).resolve().parents[1] / "agent/system_prompt.md").read_text()
+    assert "invalid_input" in prompt
+    assert "timeout" in prompt
+    assert "internal_error" in prompt
+    assert "re-ask" in prompt.lower()
+
