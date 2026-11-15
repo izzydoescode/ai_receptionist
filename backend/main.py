@@ -27,6 +27,7 @@ import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
@@ -38,7 +39,10 @@ from pydantic import BaseModel, BeforeValidator, Field
 
 from bear.db import check_schema, make_engine
 from bear.seed import DEMO_REPAIR_ORDERS
+from bear.shops import load_shops
 from bear.store import SlotFull, Store
+
+DEFAULT_SHOPS_DIR = Path(__file__).resolve().parent.parent / "shops"
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,7 @@ class Settings:
     admin_password: str
     database_url: str
     shop_id: str
+    shops_dir: str = str(DEFAULT_SHOPS_DIR)
     tool_deadline_ms: int = 4000
     admin_user: str = "admin"
     shop_name: str = "Vice City Auto"
@@ -69,6 +74,7 @@ class Settings:
             admin_password=os.getenv("ADMIN_PASSWORD", ""),
             database_url=os.getenv("DATABASE_URL", "sqlite:///./vicecity.db"),
             shop_id=os.getenv("SHOP_ID", "vice-city-auto"),
+            shops_dir=os.getenv("SHOPS_DIR") or str(DEFAULT_SHOPS_DIR),
             shop_name=os.getenv("SHOP_NAME", "Vice City Auto"),
             shop_tz=ZoneInfo(os.getenv("SHOP_TZ", "America/New_York")),
         )
@@ -426,6 +432,9 @@ def create_app() -> FastAPI:
 
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", settings.shop_id):
         raise RuntimeError("invalid SHOP_ID")
+    shops = load_shops(settings.shops_dir)
+    if settings.shop_id not in shops:
+        raise RuntimeError(f"SHOP_ID {settings.shop_id} has no shop file in SHOPS_DIR")
     engine = None
     try:
         engine = make_engine(settings.database_url)
@@ -449,6 +458,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(lifespan=lifespan, title=f"{settings.shop_name} AI Receptionist tools", version="0.1.0")
     app.state.settings = settings
+    app.state.shops = shops
     store = app.state.store = Store(engine, write_guard=check_deadline)
     app.add_middleware(ToolTransportMiddleware)
     app.add_middleware(RequestLoggingMiddleware, deadline_ms=settings.tool_deadline_ms)

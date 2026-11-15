@@ -96,7 +96,8 @@ uvicorn --factory main:create_app --reload --port 8000 --no-access-log
 | `BEAR_ENV` | no | none | Set to `dev` for local hacking: allows starting without `TOOL_SECRET` (tools are then open, with a warning) and enables `POST /admin/reset`. Never set it in production. |
 | `TOOL_DEADLINE_MS` | no | `4000` | Deadline in ms for `POST /tools/*` (positive integer; anything else stops startup). On timeout the tool returns `200 {"ok": false, "error": "timeout", ...}` and the abandoned worker can no longer save. `/health` and `/admin` have no deadline. |
 | `DATABASE_URL` | no | `sqlite:///./vicecity.db` | SQLAlchemy database URL, relative to the working directory for SQLite. Never log it. |
-| `SHOP_ID` | no | `vice-city-auto` | Shop used by tools; lowercase letters, digits and hyphens, starting with a letter or digit, up to 64 characters. |
+| `SHOP_ID` | no | `vice-city-auto` | Default shop used by tools; lowercase letters, digits and hyphens, starting with a letter or digit, up to 64 characters. It must have a file in `SHOPS_DIR`. |
+| `SHOPS_DIR` | no | the repo's `shops/` | Folder with one `<shop_id>.yaml` per shop. Every file is validated at startup and any problem stops the app. |
 | `SHOP_NAME` | no | `Vice City Auto` | Shop name shown on the board and used as the default tow destination. |
 | `SHOP_TZ` | no | `America/New_York` | Shop time zone for slots and timestamps. |
 

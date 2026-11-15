@@ -85,7 +85,7 @@ def test_board_newest_fifty(make_client):
 
 
 def test_board_query_isolates_shops(make_client):
-    client = make_client(_seed=False, SHOP_ID="shop-a")
+    client = make_client(_seed=False, SHOP_ID="shop-a", _shops=[{"shop_id": "shop-a"}, {"shop_id": "shop-b"}])
     store = client.app.state.store
     for shop in ("shop-a", "shop-b"):
         store.create_message(shop, **{**MESSAGE, "caller_name": shop})
