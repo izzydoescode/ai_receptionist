@@ -159,7 +159,8 @@ def normalize_phone(value):
         raise ValueError("invalid phone")
     plus = value.strip().startswith("+")
     digits = re.sub(r"\D", "", value)
-    if plus and 8 <= len(digits) <= 15:
+    # E.164 country codes are 1-9; a leading 0 is not a valid country code.
+    if plus and re.fullmatch(r"[1-9]\d{7,14}", digits):
         if digits.startswith("1"):
             # Country code 1 is NANP and must be +1 plus a 10-digit national number.
             if len(digits) != 11 or not is_nanp(digits[1:]):

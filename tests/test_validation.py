@@ -103,6 +103,13 @@ def test_international_numbers_need_plus_and_valid_length(client, tool_headers, 
 
 
 @pytest.mark.parametrize("tool", WRITE_TOOLS)
+@pytest.mark.parametrize("phone", ["+0123456789", "+0 123 456 789", "+00000000"])
+def test_e164_country_code_cannot_start_with_zero(client, tool_headers, payloads, tool, phone):
+    reject(client, tool_headers, payloads, tool, "phone", phone)
+
+
+
+@pytest.mark.parametrize("tool", WRITE_TOOLS)
 @pytest.mark.parametrize(
     "phone",
     [
