@@ -124,13 +124,18 @@ def normalize_name(value: str) -> str:
 
 
 # ---------- validation and transport ----------
+# ZWNJ and ZWJ are format characters but must be kept for Persian (and
+# similar scripts) and for emoji sequences.
+KEEP_FORMAT = {"‌", "‍"}
+
+
 def clean_text(value):
     if isinstance(value, str):
         chars = []
         for char in value:
             category = unicodedata.category(char)
-            if category == "Cf":
-                continue  # zero-width, bidi controls, BOM
+            if category == "Cf" and char not in KEEP_FORMAT:
+                continue  # ZWSP, bidi controls, BOM
             chars.append(" " if category == "Cc" else char)
         return " ".join("".join(chars).split())
     return value

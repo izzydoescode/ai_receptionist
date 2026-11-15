@@ -239,8 +239,6 @@ def test_controls_cleaned(client, tool_headers, payloads, tool, field, limit, co
 
 FORMAT_CHARS = [
     "\u200b",  # ZERO WIDTH SPACE
-    "\u200c",  # ZERO WIDTH NON-JOINER
-    "\u200d",  # ZERO WIDTH JOINER
     "\u200e",  # LEFT-TO-RIGHT MARK
     "\u200f",  # RIGHT-TO-LEFT MARK
     "\u202a",  # LEFT-TO-RIGHT EMBEDDING
@@ -249,6 +247,10 @@ FORMAT_CHARS = [
     "\u2069",  # POP DIRECTIONAL ISOLATE
     "\ufeff",  # BOM
 ]
+JOINER_CHARS = [
+    "\u200c",  # ZERO WIDTH NON-JOINER (Persian and other scripts)
+    "\u200d",  # ZERO WIDTH JOINER (emoji sequences)
+]
 
 
 @pytest.mark.parametrize("tool,field,limit", TEXT_LIMITS)
@@ -256,6 +258,22 @@ FORMAT_CHARS = [
 def test_format_characters_are_stripped(client, tool_headers, payloads, tool, field, limit, mark):
     value = f"  Ana{mark}Gomez  "
     assert accept(client, tool_headers, payloads, tool, **{field: value})[field] == "AnaGomez"
+
+
+@pytest.mark.parametrize("tool,field,limit", TEXT_LIMITS)
+@pytest.mark.parametrize("mark", JOINER_CHARS)
+def test_zero_width_joiners_are_kept(client, tool_headers, payloads, tool, field, limit, mark):
+    value = f"  Ana{mark}Gomez  "
+    assert accept(client, tool_headers, payloads, tool, **{field: value})[field] == f"Ana{mark}Gomez"
+
+
+@pytest.mark.parametrize(
+    "tool,field",
+    [("book_appointment", "customer_name"), ("request_tow", "customer_name"), ("take_message", "caller_name")],
+)
+def test_persian_name_keeps_zwnj(client, tool_headers, payloads, tool, field):
+    name = "علی\u200cرضا"
+    assert accept(client, tool_headers, payloads, tool, **{field: f"  {name}  "})[field] == name
 
 
 @pytest.mark.parametrize("tool,field", REQUIRED_TEXT)
