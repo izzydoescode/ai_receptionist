@@ -108,6 +108,19 @@ def test_message_ticket_and_requested_callback_language(client, payloads, tool_h
     assert sentence in result["message"]
 
 
+def test_take_message_persists_vehicle_and_shows_it_on_the_board(client, payloads, tool_headers):
+    from conftest import ADMIN_AUTH
+
+    vehicle = "2012 Ford F-150"
+    result = post(client, tool_headers, "take_message", {**payloads["take_message"], "vehicle": vehicle})
+    assert result["saved"] is True
+    (message,) = rows(client, "messages")
+    assert message["vehicle"] == vehicle
+    board = client.get("/admin", auth=ADMIN_AUTH)
+    assert board.status_code == 200
+    assert vehicle in board.text
+
+
 @pytest.mark.parametrize(
     "tool,field",
     [

@@ -96,6 +96,7 @@ messages = Table(
     metadata,
     *common_columns(),
     *text_columns("caller_name", "phone", "reason", "urgency", "callback_language"),
+    Column("vehicle", Text),
 )
 audit_events = Table(
     "audit_events",

@@ -661,7 +661,7 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/take_message", dependencies=[Depends(check_secret)])
     def take_message(req: TakeMessage):
-        m = store.create_message(settings.shop_id, **req.model_dump(exclude={"vehicle"}))
+        m = store.create_message(settings.shop_id, **req.model_dump())
         lang = {
             "ht": " A Creole-speaking team member will call back.",
             "es": " Alguien que habla español le llamará.",
@@ -682,6 +682,8 @@ def create_app() -> FastAPI:
         db = store.board(shop, 50)
 
         def display(value):
+            if value is None:
+                return ""
             if isinstance(value, datetime):
                 return value.astimezone(settings.shop_tz).strftime("%Y-%m-%d %H:%M %Z")
             return str(value)
@@ -700,7 +702,7 @@ def create_app() -> FastAPI:
     <h1>{html.escape(str(settings.shop_name), quote=True)}: AI receptionist live board</h1>
     <h2>Appointments</h2>{table(db["appointments"], ["public_id", "slot_start", "customer_name", "phone", "vehicle", "service", "language"])}
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
-    <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "reason", "urgency", "callback_language"])}
+    <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "vehicle", "reason", "urgency", "callback_language"])}
     <h2>Open repair orders</h2>{table(db["repair_orders"], ["ro_number", "customer_name", "vehicle", "status", "eta"])}
     </body></html>"""
 
