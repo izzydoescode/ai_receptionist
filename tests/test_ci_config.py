@@ -192,3 +192,72 @@ def test_sarif_main(tmp_path, level, exit_code):
     assert result.returncode == exit_code, result.stderr
     assert summary.read_text().startswith("Existing summary\n## CodeQL SARIF")
     assert f"{level}: 1" in summary.read_text()
+
+
+@pytest.mark.parametrize("reference", [{"ruleIndex": 0}, {"ruleId": "danger"}])
+def test_sarif_rule_default_level(tmp_path, reference):
+    path = tmp_path / "rules.sarif"
+    rule = {"id": "danger", "defaultConfiguration": {"level": "error"}}
+    run = {"tool": {"driver": {"rules": [rule]}}, "results": [reference]}
+    path.write_text(json.dumps({"runs": [run]}))
+    markdown, errors = summarize([path])
+    assert errors == 1
+    assert "error: 1" in markdown
+
+
+def test_sarif_main_rule_default_level(tmp_path, monkeypatch):
+    from sarif_summary import main
+
+    reports = tmp_path / "sarif-results"
+    reports.mkdir()
+    rule = {"id": "danger", "defaultConfiguration": {"level": "error"}}
+    run = {"tool": {"driver": {"rules": [rule]}}, "results": [{"ruleIndex": 0}]}
+    (reports / "report.sarif").write_text(json.dumps({"runs": [run]}))
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.chdir(tmp_path)
+    assert main() == 1
+    assert "error: 1" in summary.read_text()
+
+
+@pytest.mark.parametrize("kind", ["pass", "notApplicable"])
+def test_sarif_non_fail_results_ignored(tmp_path, kind):
+    path = tmp_path / "non-failure.sarif"
+    path.write_text(json.dumps({"runs": [{"results": [{"kind": kind, "level": "error"}]}]}))
+    markdown, errors = summarize([path])
+    assert errors == 0
+    assert "No results found." in markdown
+    assert "- unknown" not in markdown
+
+
+@pytest.mark.parametrize(
+    "result, expected",
+    [
+        ({"ruleId": "extension-rule"}, "error"),
+        ({"rule": {"index": 0, "toolComponent": {"index": 0}}}, "error"),
+        ({"rule": {"index": 0, "toolComponent": {"name": "extension"}}}, "error"),
+        ({"rule": {"index": 0, "toolComponent": {"guid": "extension-guid"}}}, "error"),
+        ({"ruleIndex": 0, "level": "note"}, "note"),
+        ({"ruleIndex": 0}, "warning"),
+        ({"ruleId": "missing"}, "warning"),
+        ({"ruleIndex": 99}, "warning"),
+        ({"ruleIndex": -1}, "warning"),
+        ({"kind": "fail"}, "warning"),
+    ],
+)
+def test_sarif_severity_resolution(tmp_path, result, expected):
+    path = tmp_path / "severity.sarif"
+    tool = {
+        "driver": {"rules": [{"id": "driver-rule"}]},
+        "extensions": [
+            {
+                "name": "extension",
+                "guid": "extension-guid",
+                "rules": [{"id": "extension-rule", "defaultConfiguration": {"level": "error"}}],
+            }
+        ],
+    }
+    path.write_text(json.dumps({"runs": [{"tool": tool, "results": [result]}]}))
+    markdown, errors = summarize([path])
+    assert f"- {expected}: 1" in markdown
+    assert errors == (1 if expected == "error" else 0)
