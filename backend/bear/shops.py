@@ -50,6 +50,8 @@ E164 = Annotated[str, BeforeValidator(parse_e164)]
 Clock = Annotated[time, BeforeValidator(parse_clock)]
 Label = Annotated[str, Field(min_length=1, max_length=80)]
 Language = Literal["en", "es", "fr"]
+# Languages staff can return calls in; Kreyòl is possible here even though the voice agent can't speak it.
+CallbackLanguage = Literal["en", "es", "fr", "ht"]
 VoiceId = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
 
 
@@ -118,6 +120,7 @@ class ShopConfig(_Frozen):
     services: list[Label] = Field(min_length=1)
     languages: list[Language] = Field(min_length=1)
     ht_fallback: Literal["message", "french"] = "message"
+    callback_languages: list[CallbackLanguage] = Field(default=["en"], min_length=1)
     voices: dict[Language, VoiceId]
     first_messages: dict[Language, Annotated[str, Field(min_length=1, max_length=500)]]
     features: Features = Features()
@@ -139,11 +142,11 @@ class ShopConfig(_Frozen):
             raise ValueError("must be an IANA time zone like America/New_York") from None
         return value
 
-    @field_validator("languages")
+    @field_validator("languages", "callback_languages")
     @classmethod
-    def _unique_languages(cls, value):
+    def _unique_languages(cls, value, info):
         if len(set(value)) != len(value):
-            raise ValueError("languages must not repeat")
+            raise ValueError(f"{info.field_name} must not repeat")
         return value
 
     @model_validator(mode="after")

@@ -29,6 +29,7 @@ VALID = {
     "services": ["oil change", "brakes"],
     "languages": ["en", "es"],
     "ht_fallback": "message",
+    "callback_languages": ["en", "es"],
     "voices": {"en": "PLACEHOLDER_VOICE_EN", "es": "PLACEHOLDER_VOICE_ES"},
     "first_messages": {
         "en": "Demo Shop, this is Bear. Calls may be recorded. What can I do for you?",
@@ -207,3 +208,17 @@ def test_config_is_immutable():
 
 def test_unknown_is_reserved_for_unrecognized_numbers():
     assert "reserved" in error_text(config(shop_id="unknown"))
+
+
+def test_callback_languages_default_to_english_only():
+    assert ShopConfig.model_validate(config(callback_languages=...)).callback_languages == ["en"]
+
+
+def test_callback_languages_accept_any_supported_language_including_creole():
+    shop = ShopConfig.model_validate(config(callback_languages=["en", "es", "fr", "ht"]))
+    assert shop.callback_languages == ["en", "es", "fr", "ht"]
+
+
+@pytest.mark.parametrize("languages", [[], ["es", "es"], ["de"]])
+def test_callback_languages_must_be_a_unique_nonempty_subset(languages):
+    assert "callback_languages" in error_text(config(callback_languages=languages))

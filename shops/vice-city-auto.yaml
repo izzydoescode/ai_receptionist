@@ -43,6 +43,8 @@ services:
 languages: [en, es, fr]
 # Kreyol callers: "french" switches to French; "message" only takes a message.
 ht_fallback: french
+# Languages staff can return calls in. Bear only promises a callback in these.
+callback_languages: [en, es]
 
 voices:
   en: PLACEHOLDER_VOICE_EN
