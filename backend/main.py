@@ -39,7 +39,7 @@ from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 from bear.db import check_schema, make_engine
 from bear.initiation import InitRequest, shop_initiation, unknown_initiation
 from bear.seed import DEMO_REPAIR_ORDERS
-from bear.shops import SHOP_ID_PATTERN, TOW_FALLBACK_REPLY, UNKNOWN_SHOP_ID, ShopConfig, load_shops
+from bear.shops import LANGUAGE_NAMES, SHOP_ID_PATTERN, TOW_FALLBACK_REPLY, UNKNOWN_SHOP_ID, ShopConfig, load_shops
 from bear.store import SlotFull, Store
 
 DEFAULT_SHOPS_DIR = Path(__file__).resolve().parent.parent / "shops"
@@ -86,6 +86,13 @@ STATUS_TEXT = {
     "diagnosing": "being diagnosed",
 }
 
+
+# Said only when the shop lists the language in callback_languages (docs/SHOPS.md).
+STAFFED_CALLBACK = {
+    "es": "Alguien que habla español le llamará.",
+    "fr": "A French-speaking team member will call back.",
+    "ht": "A Creole-speaking team member will call back.",
+}
 
 UNKNOWN_SHOP = {
     "ok": False,
@@ -681,17 +688,23 @@ def create_app() -> FastAPI:
     def take_message(req: TakeMessage):
         # Calls to a number no shop owns (Task 8) may still leave a message, filed under "unknown".
         if req.shop_id == UNKNOWN_SHOP_ID:
-            shop_id = UNKNOWN_SHOP_ID
+            shop_id, staffed = UNKNOWN_SHOP_ID, ["en"]
         else:
             shop = resolve_shop(req.shop_id)
             if shop is None:
                 return UNKNOWN_SHOP
-            shop_id = shop.shop_id
+            shop_id, staffed = shop.shop_id, shop.callback_languages
         m = store.create_message(shop_id, **req.model_dump(exclude={"vehicle", "shop_id"}))
-        lang = {
-            "ht": " A Creole-speaking team member will call back.",
-            "es": " Alguien que habla español le llamará.",
-        }.get(req.callback_language, "")
+        language = req.callback_language
+        if language == "en":
+            lang = ""
+        elif language in staffed:
+            lang = " " + STAFFED_CALLBACK[language]
+        else:
+            lang = (
+                f" Don't promise a {LANGUAGE_NAMES[language]}-speaking callback; "
+                "no one who speaks it is listed for this shop."
+            )
         return {
             "ok": True,
             "saved": True,
