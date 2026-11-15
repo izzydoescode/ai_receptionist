@@ -39,6 +39,7 @@ def test_deadline_does_not_persist_late(make_client, monkeypatch, payloads, tool
         return original(path)
 
     monkeypatch.setattr(main, "read_db", slow_read)
+    caplog.clear()  # drop the seeding request's own log record
     with caplog.at_level(logging.DEBUG):
         start = time.monotonic()
         response = client.post(f"/tools/{tool}", json=payloads[tool], headers=tool_headers)

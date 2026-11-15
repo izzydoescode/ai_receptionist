@@ -25,8 +25,12 @@ FORBIDDEN = (
 
 
 def assert_private(caplog):
-    texts = [caplog.text]
+    # httpx records are TestClient's own client-side request lines, not app logs.
+    texts = []
     for record in caplog.records:
+        if record.name.startswith("httpx"):
+            continue
+        texts.append(logging.Formatter("%(name)s %(message)s").format(record))
         texts.extend((record.getMessage(), repr(record.args), record.exc_text or ""))
         if record.exc_info:
             texts.append(str(record.exc_info[1]))
