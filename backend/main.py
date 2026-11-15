@@ -600,6 +600,11 @@ def create_app() -> FastAPI:
     def resolve_shop(shop_id: str | None) -> ShopConfig | None:
         return shops.get(settings.shop_id if shop_id is None else shop_id)
 
+    def missing_shop(shop_id: str | None) -> dict | None:
+        if shop_id is None and not (settings.env == "dev" and len(shops) == 1):
+            return invalid_input("shop_id", "The shop id is missing; check the tool configuration.")
+        return None
+
     def slot_problem(shop: ShopConfig, dt: datetime) -> str | None:
         reason = shop.closed_reason(dt)
         if reason is None and dt < datetime.now(shop.tz):
@@ -648,6 +653,8 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/book_appointment", dependencies=[Depends(check_secret)])
     def book_appointment(req: BookAppointment):
+        if error := missing_shop(req.shop_id):
+            return error
         shop = resolve_shop(req.shop_id)
         if shop is None:
             return UNKNOWN_SHOP
@@ -683,6 +690,8 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/check_repair_status", dependencies=[Depends(check_secret)])
     def check_repair_status(req: RepairStatus):
+        if error := missing_shop(req.shop_id):
+            return error
         shop = resolve_shop(req.shop_id)
         if shop is None:
             return UNKNOWN_SHOP
@@ -724,6 +733,8 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/request_tow", dependencies=[Depends(check_secret)])
     def request_tow(req: TowRequest):
+        if error := missing_shop(req.shop_id):
+            return error
         shop = resolve_shop(req.shop_id)
         if shop is None:
             return UNKNOWN_SHOP
@@ -738,6 +749,8 @@ def create_app() -> FastAPI:
     @app.post("/tools/take_message", dependencies=[Depends(check_secret)])
     def take_message(req: TakeMessage):
         # Calls to a number no shop owns (Task 8) may still leave a message, filed under "unknown".
+        if error := missing_shop(req.shop_id):
+            return error
         if req.shop_id == UNKNOWN_SHOP_ID:
             shop_id = UNKNOWN_SHOP_ID
         else:

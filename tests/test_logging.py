@@ -194,7 +194,12 @@ def test_correlation_header_validation(client, caplog, request_id, conversation_
     ],
 )
 def test_error_response_records(make_client, tool_headers, caplog, case, status, error):
-    client = make_client(ADMIN_PASSWORD=None) if case == "unavailable" else make_client()
+    if case == "unavailable":
+        client = make_client(ADMIN_PASSWORD=None)
+    elif case == "reset":
+        client = make_client(BEAR_ENV="prod")
+    else:
+        client = make_client()
     with caplog.at_level(logging.DEBUG):
         if case in {"unavailable", "reset"}:
             method, path = ("GET", "/admin") if case == "unavailable" else ("POST", "/admin/reset")
@@ -334,8 +339,8 @@ def test_request_json_written_to_stdout(tmp_path):
 @pytest.mark.parametrize(
     "body_shop,logged_shop,error",
     [
-        (None, "vice-city-auto", None),
-        ("null", "vice-city-auto", None),
+        (None, "vice-city-auto", "invalid_input"),
+        ("null", "vice-city-auto", "invalid_input"),
         ("west-shop", "west-shop", None),
         ("no-such-shop", "no-such-shop", "unknown_shop"),
         ("Bad Shop", None, "invalid_input"),
