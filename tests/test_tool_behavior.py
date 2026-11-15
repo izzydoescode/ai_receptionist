@@ -106,15 +106,17 @@ def test_unsafe_tow_without_dispatch_keeps_the_911_warning_first(client, payload
 @pytest.mark.parametrize("shop_id", ["vice-city-auto", "unknown"])
 def test_message_reply_promises_only_a_callback(client, payloads, tool_headers, shop_id):
     message = post(client, tool_headers, "take_message", {**payloads["take_message"], "shop_id": shop_id})["message"]
-    assert message.startswith("Message saved for the service writer. The shop will call back as soon as possible.")
+    assert message.startswith(
+        "I've gone ahead and saved your message for the service writer. The shop will call you back as soon as possible."
+    )
     for phrase in BANNED_WHEN_OFF:
         assert phrase not in message
 
 
 STAFFED_SENTENCES = {
-    "es": "Alguien que habla español le llamará.",
-    "fr": "A French-speaking team member will call back.",
-    "ht": "A Creole-speaking team member will call back.",
+    "es": "Alguien que habla español le devolverá la llamada.",
+    "fr": "Quelqu'un qui parle français vous rappellera.",
+    "ht": "Yon moun ki pale Kreyòl ap rele w tounen.",
 }
 LANGUAGE_NAMES = {"es": "Spanish", "fr": "French", "ht": "Haitian Creole"}
 
@@ -139,7 +141,7 @@ def test_message_never_promises_an_unstaffed_language(make_client, payloads, too
     message = leave_message(client, tool_headers, payloads, language)
     assert STAFFED_SENTENCES[language] not in message
     assert f"Don't promise a {LANGUAGE_NAMES[language]}-speaking callback" in message
-    assert "The shop will call back as soon as possible." in message
+    assert "The shop will call you back as soon as possible." in message
 
 
 def test_demo_shop_promises_spanish_but_not_creole(client, payloads, tool_headers):
@@ -155,7 +157,10 @@ def test_unknown_line_promises_no_language_callback(client, payloads, tool_heade
 
 def test_english_callback_adds_nothing(client, payloads, tool_headers):
     message = leave_message(client, tool_headers, payloads, "en")
-    assert message == "Message saved for the service writer. The shop will call back as soon as possible."
+    assert (
+        message
+        == "I've gone ahead and saved your message for the service writer. The shop will call you back as soon as possible."
+    )
 
 
 @pytest.mark.parametrize(

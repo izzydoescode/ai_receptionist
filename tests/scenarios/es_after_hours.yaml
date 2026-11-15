@@ -22,7 +22,7 @@ calls:
       reason: Quiere una cita para revisar el aire acondicionado; prefiere que la llamen el lunes
       callback_language: es
     expect: {ok: true, saved: true}
-    expect_contains: {message: Alguien que habla español le llamará.}
+    expect_contains: {message: Alguien que habla español le devolverá la llamada.}
 db_counts: {appointments: 0}
 db:
   messages:

@@ -94,9 +94,9 @@ STATUS_TEXT = {
 
 # Said only when the shop lists the language in callback_languages (docs/SHOPS.md).
 STAFFED_CALLBACK = {
-    "es": "Alguien que habla español le llamará.",
-    "fr": "A French-speaking team member will call back.",
-    "ht": "A Creole-speaking team member will call back.",
+    "es": "Alguien que habla español le devolverá la llamada.",
+    "fr": "Quelqu'un qui parle français vous rappellera.",
+    "ht": "Yon moun ki pale Kreyòl ap rele w tounen.",
 }
 
 UNKNOWN_SHOP = {
@@ -764,7 +764,8 @@ def create_app() -> FastAPI:
             "ok": True,
             "saved": True,
             "ticket": m["public_id"],
-            "message": "Message saved for the service writer. The shop will call back as soon as possible." + lang,
+            "message": "I've gone ahead and saved your message for the service writer. The shop will call you back as soon as possible."
+            + lang,
         }
 
     @app.get("/admin", response_class=HTMLResponse, dependencies=[Depends(check_admin)])

@@ -19,7 +19,9 @@ For each line, record the reviewer's initials and the date in the last column. I
 |---|---|---|---|---|---|
 | 5a | HT | `backend/bear/shops.py` `KREYOL_BRIDGE_STAFFED`, sent in `callback_text` when the shop lists `ht` in `callback_languages` | Bonjou! Mwen pa pale Kreyòl byen. Nou ka pale franse, anglè oswa panyòl, oswa mwen pran mesaj ou epi yon moun ki pale Kreyòl ap rele w tounen. | Spelling and tone. Promises "someone who speaks Kreyòl will call you back", so it's only used when `ht` is listed. | |
 | 5b | HT | `backend/bear/shops.py` `KREYOL_BRIDGE_UNSTAFFED`, used otherwise | Bonjou! Mwen pa pale Kreyòl byen. Nou ka pale franse, anglè oswa panyòl, oswa mwen pran mesaj ou epi garaj la ap rele w tounen. | New line: "…or I take your message and the garage will call you back." Check that it reads naturally and promises no language. | |
-| 6 | ES | `backend/main.py` `STAFFED_CALLBACK`, the `take_message` reply (read by the agent) | Alguien que habla español le llamará. | Only sent when the shop lists `es` in `callback_languages`. | |
+| 6 | ES | `backend/main.py` `STAFFED_CALLBACK`, the `take_message` reply (read by the agent) | Alguien que habla español le devolverá la llamada. | Only sent when the shop lists `es` in `callback_languages`. Casual "call back" wording; "devolverá la llamada" not "llamará". | |
+| 6b | FR | `backend/main.py` `STAFFED_CALLBACK` | Quelqu'un qui parle français vous rappellera. | Only sent when the shop lists `fr` in `callback_languages`. New line; needs a native-speaker check. | |
+| 6c | HT | `backend/main.py` `STAFFED_CALLBACK` | Yon moun ki pale Kreyòl ap rele w tounen. | Only sent when the shop lists `ht`. Same callback wording as the staffed Kreyòl bridge line. | |
 | 7 | ES | prompt, "Spanish" style notes | carro, goma (tire), frenos, aire acondicionado, chapistería/hojalatería | Words callers actually use in South Florida | |
 
 ## Agent-generated speech

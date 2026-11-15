@@ -10,7 +10,7 @@ calls:
     expect:
       ok: true
       saved: true
-      message: Message saved for the service writer. The shop will call back as soon as possible.
+      message: I've gone ahead and saved your message for the service writer. The shop will call you back as soon as possible.
 db:
   messages:
     - {caller_name: Taylor Brooks, urgency: normal, callback_language: en}
