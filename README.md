@@ -79,7 +79,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r backend/requirements-dev.txt        # runtime deps + pytest, pytest-cov, httpx
 cp .env.example .env                               # then replace both CHANGE_ME values; never commit .env
 set -a && . ./.env && set +a                       # load the variables into this shell
-cd backend && uvicorn --factory main:create_app --reload --port 8000
+cd backend && uvicorn --factory main:create_app --reload --port 8000 --no-access-log
 ```
 
 `main:app` no longer exists. The app is built by the `create_app()` factory, which reads settings when it starts. With the `CHANGE_ME` placeholder still in place it refuses to start (the secret is too short), which is on purpose.
@@ -91,11 +91,22 @@ cd backend && uvicorn --factory main:create_app --reload --port 8000
 | `ADMIN_USER` | no | `admin` | HTTP Basic username for `/admin`. |
 | `ADMIN_PASSWORD` | for `/admin` | none | HTTP Basic password. If unset, `/admin` returns 503. |
 | `BEAR_ENV` | no | none | Set to `dev` for local hacking: allows starting without `TOOL_SECRET` (tools are then open, with a warning) and enables `POST /admin/reset`. Never set it in production. |
+| `TOOL_DEADLINE_MS` | no | `4000` | Deadline in ms for `POST /tools/*` (positive integer; anything else stops startup). On timeout the tool returns `200 {"ok": false, "error": "timeout", ...}` and the abandoned worker can no longer save. `/health` and `/admin` have no deadline. |
 | `DATA_FILE` | no | `backend/data.json` | Mock JSON data store (created with 4 demo repair orders on first use). Replaced by a real DB in PLAN Task 5. |
 | `SHOP_NAME` | no | `Vice City Auto` | Shop name shown on the board and used as the default tow destination. |
 | `SHOP_TZ` | no | `America/New_York` | Shop time zone for slots and timestamps. |
 
 Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `GET /admin` (HTTP Basic), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or RO number** on the ticket.
+
+### Tool responses and input rules
+- Every tool reply has `ok`. Bad input comes back as `200 {"ok": false, "error": "invalid_input", "field": "...", "message": "<speakable hint>"}` so the agent can re-ask; an unexpected server error is `200 {"ok": false, "error": "internal_error", ...}`; a deadline miss is `error: "timeout"`.
+- Phones are normalized to E.164 (US default, 10 or 11 digits). Dates are `YYYY-MM-DD` within 60 days; times `HH:MM`. Names max 80 chars, free text max 500; control characters are stripped.
+- Before auth runs, `/tools/*` requires `Content-Type: application/json` (else 415), a body of at most 16 KB (else 413) and a JSON object (else 400).
+
+### Logs
+The app writes one JSON line per request to stdout (logger `bear.request`), e.g.
+`{"request_id":"…","method":"POST","path":"/tools/take_message","tool":"take_message","conversation_id":"conv_smoke1","ts":"…+00:00","level":"info","event":"request","status":200,"latency_ms":16.9,"ok":true,"phone":"***0199"}`.
+Only allowlisted fields are logged: phones as the last 4 digits, never names, vehicles, addresses, notes or other free text, no headers, query strings, bodies, exception messages or secrets. `X-Request-Id` (if it matches `[A-Za-z0-9._-]{1,64}`, otherwise generated) is echoed on every response; `X-Conversation-Id` is logged when it is valid. Run uvicorn with `--no-access-log`: its default access log prints client IPs and raw query strings.
 
 ## Run the tests
 From the repo root, with the dev requirements installed:

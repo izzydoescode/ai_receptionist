@@ -61,7 +61,7 @@ Acceptance: unit tests for each case:
 - accented name "Gómez" vs "gomez" → found
 - the not-found response is byte-identical across failure modes
 
-### Task 3: Input validation
+### Task 3: Input validation (done on `fix/input-validation-and-logging`)
 - Phones: normalize to E.164 (US default). Reject anything that isn't 10 or 11 digits after normalizing. Default to the caller ID when it's provided.
 - `preferred_date` is ISO and no more than 60 days out. `preferred_time` is HH:MM.
 - Enums: `language ∈ {en, es, fr, ht}`, `urgency ∈ {low, normal, high}`.
@@ -71,7 +71,9 @@ Acceptance: unit tests for each case:
 
 Acceptance: parametrized tests for each field, plus one oversized body and one wrong content type.
 
-### Task 4: Timeouts and structured logging (no PII or secrets)
+*Decisions at implementation: errors also carry `"error": "invalid_input"`; malformed or non-object JSON is 400; transport checks run before auth; JSON numbers for phone/RO are accepted. The caller-ID default for phone is **not** done yet (needs the ElevenLabs system variable wired into the tool config).*
+
+### Task 4: Timeouts and structured logging (no PII or secrets) (done on `fix/input-validation-and-logging`)
 - Middleware gives each request a deadline: `TOOL_DEADLINE_MS`, default 4000. On timeout, return `200 {"ok": false, "message": "Sorry, our system is slow right now. Let me take a message."}`.
 - Lower `response_timeout_secs` in the tool configs from 20 to 10.
 - JSON logs to stdout, one line per request: ts, request_id, tool, shop_id (once it exists), status, latency_ms, ok, and the ElevenLabs conversation id when present.
@@ -80,6 +82,8 @@ Acceptance: parametrized tests for each field, plus one oversized body and one w
 Acceptance:
 - A test captures the log output of a `book_appointment` call. It contains `"tool":"book_appointment"` and `***0101`, and doesn't contain the name, the full phone number, or the secret.
 - A test with a forced slow handler hits the timeout path.
+
+*Decisions at implementation: tool exceptions return a safe `internal_error` envelope logged with `exc_type` only; a timed-out request's worker thread keeps running, but `save()` refuses to write after the deadline; `conversation_id` comes from an `X-Conversation-Id` header, which the ElevenLabs tool config still has to send (not yet verified); `shop_id` arrives with Task 7.*
 
 ## Phase B: Persistence
 
