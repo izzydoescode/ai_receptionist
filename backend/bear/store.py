@@ -23,10 +23,13 @@ class Store:
     def _write(self):
         with self.engine.connect() as conn:
             conn.info["sqlite_begin"] = "IMMEDIATE"
-            with conn.begin():
-                yield conn
-                if self.write_guard is not None:
-                    self.write_guard()
+            try:
+                with conn.begin():
+                    yield conn
+                    if self.write_guard is not None:
+                        self.write_guard()
+            finally:
+                conn.info.pop("sqlite_begin", None)
 
     def _insert(self, conn, table, shop_id, prefix, created_at=None, **fields):
         values = dict(
