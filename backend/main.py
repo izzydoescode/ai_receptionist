@@ -20,14 +20,16 @@ import re
 import uuid
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Literal, Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+from pydantic import BaseModel, BeforeValidator, Field
 
 
 @dataclass(frozen=True)
@@ -91,11 +93,13 @@ STATUS_TEXT = {
 
 
 REPAIR_STATUS_NEEDS = {
+    "ok": True,
     "found": False,
     "needs": ["last_name", "phone_or_ro_number"],
     "message": "I need the last name on the repair order plus the phone number on the ticket or the RO number.",
 }
 REPAIR_STATUS_FAILURE = {
+    "ok": True,
     "found": False,
     "message": "I couldn't verify that repair order. Offer to take a message for the service writer.",
 }
@@ -106,42 +110,146 @@ def normalize_name(value: str) -> str:
     return "".join(char for char in decomposed if not unicodedata.combining(char)).casefold().strip()
 
 
-# ---------- models ----------
+# ---------- validation and transport ----------
+def clean_text(value):
+    if isinstance(value, str):
+        value = "".join(" " if unicodedata.category(c) == "Cc" else c for c in value)
+        return " ".join(value.split())
+    return value
+
+
+def normalize_phone(value):
+    if not isinstance(value, str) or len(value) > 32:
+        raise ValueError("invalid phone")
+    digits = re.sub(r"\D", "", value)
+    if len(digits) == 10:
+        return "+1" + digits
+    if len(digits) == 11 and digits.startswith("1"):
+        return "+" + digits
+    raise ValueError("invalid phone")
+
+
+def validate_date(value):
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise ValueError("invalid date")
+    date.fromisoformat(value)
+    return value
+
+
+def lowercase(value):
+    return value.lower() if isinstance(value, str) else value
+
+
+Name = Annotated[str, Field(min_length=1, max_length=80), BeforeValidator(clean_text)]
+Text = Annotated[str, Field(min_length=1, max_length=500), BeforeValidator(clean_text)]
+OptionalName = Annotated[str, Field(max_length=80), BeforeValidator(clean_text)]
+OptionalText = Annotated[str, Field(max_length=500), BeforeValidator(clean_text)]
+Phone = Annotated[str, BeforeValidator(normalize_phone)]
+Language = Annotated[Literal["en", "es", "fr", "ht"], BeforeValidator(lowercase)]
+Urgency = Annotated[Literal["low", "normal", "high"], BeforeValidator(lowercase)]
+
+
 class BookAppointment(BaseModel):
-    customer_name: str
-    phone: str
-    vehicle: str = Field(description="year make model")
-    service: str = Field(description="what the customer needs, e.g. oil change, brakes, collision estimate")
-    preferred_date: str = Field(description="YYYY-MM-DD")
-    preferred_time: str = Field(description="HH:MM 24h, shop local time")
-    language: str = "en"
-    notes: Optional[str] = None
+    customer_name: Name
+    phone: Phone
+    vehicle: Name = Field(description="year make model")
+    service: Text = Field(description="what the customer needs")
+    preferred_date: Annotated[str, BeforeValidator(validate_date)]
+    preferred_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    language: Language = "en"
+    notes: Optional[OptionalText] = None
 
 
 class RepairStatus(BaseModel):
-    phone: Optional[str] = None
-    ro_number: Optional[str] = None
-    last_name: Optional[str] = None
+    phone: Optional[str] = Field(default=None, max_length=32)
+    ro_number: Optional[str] = Field(default=None, max_length=20)
+    last_name: Optional[str] = Field(default=None, max_length=80)
 
 
 class TowRequest(BaseModel):
-    customer_name: str
-    phone: str
-    vehicle: str
-    pickup_location: str = Field(description="street address, cross streets, or landmark")
-    issue: str = Field(description="what happened: won't start, accident, flat, overheating...")
+    customer_name: Name
+    phone: Phone
+    vehicle: Name
+    pickup_location: Text = Field(description="street address, cross streets, or landmark")
+    issue: Text = Field(description="what happened")
     is_safe: bool = Field(description="caller confirmed they are in a safe place")
-    destination: Optional[str] = None
-    language: str = "en"
+    destination: Optional[OptionalText] = None
+    language: Language = "en"
 
 
 class TakeMessage(BaseModel):
-    caller_name: str
-    phone: str
-    reason: str
-    urgency: str = Field(default="normal", description="low | normal | high")
-    callback_language: str = Field(default="en", description="en | es | ht | fr")
-    vehicle: Optional[str] = None
+    caller_name: Name
+    phone: Phone
+    reason: Text
+    urgency: Urgency = "normal"
+    callback_language: Language = "en"
+    vehicle: Optional[OptionalName] = None
+
+
+def invalid_input(field, message):
+    return {"ok": False, "error": "invalid_input", "field": field, "message": message}
+
+
+def validation_message(field, error):
+    hints = {
+        "phone": "I need a 10-digit phone number with area code.",
+        "preferred_date": "I need the date as year-month-day, like 2026-11-20.",
+        "preferred_time": "I need the time in 24-hour format, like 09:30 or 14:00.",
+        "language": "Language must be en, es, fr or ht.",
+        "callback_language": "Language must be en, es, fr or ht.",
+        "urgency": "Urgency must be low, normal or high.",
+        "is_safe": "I need to know if the caller is safe: true or false.",
+    }
+    label = field.replace("_", " ").capitalize()
+    if error["type"] == "string_too_long":
+        limit = error["ctx"]["max_length"]
+        return f"{label} is too long; keep it under {limit} characters."
+    return hints.get(field, f"{label} is required.")
+
+
+class ToolTransportMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] != "POST" or not scope["path"].startswith("/tools/"):
+            return await self.app(scope, receive, send)
+        # Transport checks run before FastAPI parses the body or checks the tool secret.
+        headers = dict(scope["headers"])
+
+        async def reject(status, detail):
+            await JSONResponse(status_code=status, content={"detail": detail})(scope, receive, send)
+
+        content_type = headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
+        if content_type != b"application/json":
+            return await reject(415, "Content-Type must be application/json")
+        try:
+            length = int(headers.get(b"content-length", b"0"))
+        except ValueError:
+            length = 0
+        if length > 16384:
+            return await reject(413, "request body too large")
+        body = bytearray()
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            body.extend(message.get("body", b""))
+            if len(body) > 16384:
+                return await reject(413, "request body too large")
+            if not message.get("more_body", False):
+                break
+        try:
+            parsed = json.loads(body)
+        except (ValueError, UnicodeDecodeError):
+            return await reject(400, "invalid JSON body")
+        if not isinstance(parsed, dict):
+            return await reject(400, "invalid JSON body")
+
+        async def replay():
+            return {"type": "http.request", "body": bytes(body), "more_body": False}
+
+        await self.app(scope, replay, send)
 
 
 def create_app() -> FastAPI:
@@ -153,6 +261,17 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title=f"{settings.shop_name} AI Receptionist tools", version="0.1.0")
     app.state.settings = settings
+    app.add_middleware(ToolTransportMiddleware)
+
+    @app.exception_handler(RequestValidationError)
+    async def tool_validation_error(request, exc):
+        if request.url.path.startswith("/tools/"):
+            for error in exc.errors():
+                if error["loc"][0] == "body" and len(error["loc"]) > 1:
+                    field = error["loc"][1]
+                    return JSONResponse(invalid_input(field, validation_message(field, error)))
+        return await request_validation_exception_handler(request, exc)
+
 
     def check_secret(x_tool_secret: Optional[str] = Header(default=None)):
         if settings.tool_secret and not hmac.compare_digest(
@@ -225,20 +344,18 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/book_appointment", dependencies=[Depends(check_secret)])
     def book_appointment(req: BookAppointment):
+        if date.fromisoformat(req.preferred_date) > datetime.now(settings.shop_tz).date() + timedelta(days=60):
+            return invalid_input("preferred_date", "I can only book up to 60 days out.")
         db = load()
-        try:
-            dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(tzinfo=settings.shop_tz)
-        except ValueError:
-            return {"booked": False, "message": "I need the date as YYYY-MM-DD and time as HH:MM.",
-                    "alternatives": next_slots(db, datetime.now(settings.shop_tz))}
+        dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(tzinfo=settings.shop_tz)
         problem = slot_ok(dt) or ("That slot is full." if count_at(db, dt) >= BAYS_PER_SLOT else None)
         if problem:
-            return {"booked": False, "message": problem, "alternatives": next_slots(db, max(dt, datetime.now(settings.shop_tz)))}
+            return {"ok": True, "booked": False, "message": problem, "alternatives": next_slots(db, max(dt, datetime.now(settings.shop_tz)))}
         appt = {"id": "A" + uuid.uuid4().hex[:6].upper(), "start": dt.isoformat(), **req.model_dump(),
                 "created": datetime.now(settings.shop_tz).isoformat()}
         db["appointments"].append(appt)
         save(db)
-        return {"booked": True, "confirmation": appt["id"],
+        return {"ok": True, "booked": True, "confirmation": appt["id"],
                 "when": dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " "),
                 "message": f"Booked {req.vehicle} for {req.service}. Bring the keys to the front desk."}
 
@@ -265,7 +382,7 @@ def create_app() -> FastAPI:
         if len(hits) != 1:
             return REPAIR_STATUS_FAILURE
         r = hits[0]
-        return {"found": True, "ro_number": r["ro"], "customer_first_name": r["customer"].split()[0],
+        return {"ok": True, "found": True, "ro_number": r["ro"], "customer_first_name": r["customer"].split()[0],
                 "vehicle": r["vehicle"], "status": STATUS_TEXT.get(r["status"], r["status"]),
                 "details": r["note"], "eta": r["eta"], "estimated_balance": r["balance_estimate"]}
 
@@ -280,7 +397,7 @@ def create_app() -> FastAPI:
         msg = "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
         if not req.is_safe:
             msg = "Caller may be unsafe: tell them to call 911 now if anyone is hurt or they're in traffic. " + msg
-        return {"logged": True, "ticket": tow["id"], "message": msg}
+        return {"ok": True, "logged": True, "ticket": tow["id"], "message": msg}
 
     @app.post("/tools/take_message", dependencies=[Depends(check_secret)])
     def take_message(req: TakeMessage):
@@ -289,7 +406,7 @@ def create_app() -> FastAPI:
         db["messages"].append(m)
         save(db)
         lang = {"ht": " A Creole-speaking team member will call back.", "es": " Alguien que habla español le llamará."}.get(req.callback_language, "")
-        return {"saved": True, "ticket": m["id"], "message": "Message saved for the service writer." + lang}
+        return {"ok": True, "saved": True, "ticket": m["id"], "message": "Message saved for the service writer." + lang}
 
     @app.get("/admin", response_class=HTMLResponse, dependencies=[Depends(check_admin)])
     def admin():
