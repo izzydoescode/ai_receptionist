@@ -49,3 +49,51 @@ def test_prompt_avoids_per_turn_system_time():
 def test_persona_name_is_not_hard_coded():
     assert '"Bear,"' not in PROMPT
     assert "this is Bear" not in PROMPT
+
+
+ALL_OFF = {"sms_confirmations": False, "tow_dispatch": False, "photo_texting": False}
+ALL_ON = {"sms_confirmations": True, "tow_dispatch": True, "photo_texting": True}
+# Promises that are only true when a feature is on (or never true, like "24/7").
+PHOTO_PROMISES = ["text photos", "text them photos", "text us photos"]
+TOW_PROMISES = ["15 minutes", "dispatcher will call", "dispatch calls back"]
+NEVER = ["24/7", "calendar works"]
+
+
+def rendered_prompt(features):
+    from datetime import UTC, datetime
+
+    from bear.initiation import shop_initiation
+    from bear.shops import ShopConfig
+    from test_shop_config import config
+
+    shop = ShopConfig.model_validate(config(features=features))
+    variables = shop_initiation(shop, datetime(2026, 12, 1, 15, tzinfo=UTC)).dynamic_variables.model_dump()
+    text = PROMPT
+    for name, value in variables.items():
+        text = text.replace("{{" + name + "}}", str(value))
+    assert "{{" not in text.replace("{{system__", "")
+    return text.lower()
+
+
+@pytest.mark.parametrize("phrase", PHOTO_PROMISES + TOW_PROMISES + NEVER)
+def test_no_false_promises_when_features_are_off(phrase):
+    assert phrase.lower() not in rendered_prompt(ALL_OFF)
+
+
+@pytest.mark.parametrize("phrase", NEVER)
+def test_never_promises_a_24_7_calendar(phrase):
+    assert phrase.lower() not in rendered_prompt(ALL_ON)
+
+
+def test_features_off_prompt_gives_the_fallbacks():
+    text = rendered_prompt(ALL_OFF)
+    assert "the shop will call you back as soon as possible" in text
+    assert "call 911" in text
+    assert "bring photos to the estimate" in text
+    assert "i can book you for the next open slot" in text
+
+
+def test_features_on_prompt_keeps_the_real_promises():
+    text = rendered_prompt(ALL_ON)
+    assert "text photos" in text
+    assert "15 minutes" in text
