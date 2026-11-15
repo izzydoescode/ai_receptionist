@@ -1,12 +1,12 @@
 name: quality
 on:
   push:
-    branches: ["**"]
+    branches: ["master"]
   pull_request:
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   ruff:
@@ -19,6 +19,6 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
-      - run: pip install ruff==0.17.5
+      - run: pip install -r backend/requirements-dev.txt
       - run: ruff check --output-format=github .
       - run: ruff format --check .

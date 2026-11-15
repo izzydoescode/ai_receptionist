@@ -109,10 +109,20 @@ def normalize_name(value: str) -> str:
 
 
 # ---------- validation and transport ----------
+# ZWNJ and ZWJ are format characters but must be kept for Persian (and
+# similar scripts) and for emoji sequences.
+KEEP_FORMAT = {"‌", "‍"}
+
+
 def clean_text(value):
     if isinstance(value, str):
-        value = "".join(" " if unicodedata.category(c) == "Cc" else c for c in value)
-        return " ".join(value.split())
+        chars = []
+        for char in value:
+            category = unicodedata.category(char)
+            if category == "Cf" and char not in KEEP_FORMAT:
+                continue  # ZWSP, bidi controls, BOM
+            chars.append(" " if category == "Cc" else char)
+        return " ".join("".join(chars).split())
     return value
 
 
@@ -120,14 +130,35 @@ def integer_to_string(value):
     return str(value) if isinstance(value, int) and not isinstance(value, bool) else value
 
 
+def is_nanp(digits):
+    # Area code and exchange must be [2-9]XX; this rejects 000-000-0000 and similar fakes.
+    return bool(re.fullmatch(r"[2-9]\d{2}[2-9]\d{6}", digits))
+
+
+# ext, ext., x, #, or "extension", so "…3456 ext 4" is not stored as …34564.
+PHONE_EXTENSION = re.compile(r"(?i)(?:\bextension\b|\bext\.|\bext\b|\bx\b|x\s*\d|#)")
+
+
 def normalize_phone(value):
     value = integer_to_string(value)
-    if not isinstance(value, str) or len(value) > 32:
+    if not isinstance(value, str):
         raise ValueError("invalid phone")
+    if PHONE_EXTENSION.search(value):
+        raise ValueError("phone extension")
+    if len(value) > 32:
+        raise ValueError("invalid phone")
+    plus = value.strip().startswith("+")
     digits = re.sub(r"\D", "", value)
-    if len(digits) == 10:
+    # E.164 country codes are 1-9; a leading 0 is not a valid country code.
+    if plus and re.fullmatch(r"[1-9]\d{7,14}", digits):
+        if digits.startswith("1"):
+            # Country code 1 is NANP and must be +1 plus a 10-digit national number.
+            if len(digits) != 11 or not is_nanp(digits[1:]):
+                raise ValueError("invalid phone")
+        return "+" + digits
+    if len(digits) == 10 and is_nanp(digits):
         return "+1" + digits
-    if len(digits) == 11 and digits.startswith("1"):
+    if len(digits) == 11 and digits.startswith("1") and is_nanp(digits[1:]):
         return "+" + digits
     raise ValueError("invalid phone")
 
@@ -171,7 +202,7 @@ class BookAppointment(ToolRequest):
 class RepairStatus(ToolRequest):
     phone: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=32)
     ro_number: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=20)
-    last_name: str | None = Field(default=None, max_length=80)
+    last_name: Annotated[str | None, BeforeValidator(clean_text)] = Field(default=None, max_length=80)
 
 
 class TowRequest(ToolRequest):
@@ -200,7 +231,7 @@ def invalid_input(field, message):
 
 def validation_message(field, error):
     hints = {
-        "phone": "I need a 10-digit phone number with area code.",
+        "phone": "I need a 10-digit US number, area code and all, or an international number starting with plus and the country code.",
         "preferred_date": "I need the date as year-month-day, like 2026-11-20.",
         "preferred_time": "I need the time in 24-hour format, like 09:30 or 14:00.",
         "language": "Language must be en, es, fr or ht.",
@@ -213,17 +244,38 @@ def validation_message(field, error):
     if error["type"] == "string_too_long":
         limit = error["ctx"]["max_length"]
         return f"{label} is too long; keep it under {limit} characters."
+    detail = f"{error.get('msg', '')} {(error.get('ctx') or {}).get('error', '')}".lower()
+    if field == "phone" and "extension" in detail:
+        return "I need the phone number without the extension."
     return hints.get(field, f"{label} is required.")
 
 
 # Only derived, allowlisted fields belong in request logs; never log exceptions or bodies.
-_REQUEST_DEADLINE = contextvars.ContextVar("tool_deadline", default=None)
+# Mutable bound so a worker thread sees abandoned=True after the event loop times out.
+_REQUEST_BOUND = contextvars.ContextVar("tool_bound", default=None)
 _TOOL_NAMES = {"book_appointment", "check_repair_status", "request_tow", "take_message"}
 _CORRELATION_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
 
 class _DeadlineExceeded(Exception):
     """Private signal preventing an abandoned worker from persisting changes."""
+
+
+def write_is_open() -> bool:
+    bound = _REQUEST_BOUND.get()
+    if not bound:
+        return True
+    if bound.get("abandoned"):
+        return False
+    deadline = bound.get("deadline")
+    return deadline is None or time.monotonic() < deadline
+
+
+def persist_json(path: Path, db: dict) -> None:
+    """Write the data file only if this request is still allowed to commit."""
+    if not write_is_open():
+        raise _DeadlineExceeded
+    path.write_text(json.dumps(db, indent=2, ensure_ascii=False))
 
 
 def configure_logging():
@@ -305,7 +357,8 @@ class RequestLoggingMiddleware:
                         }
                     )(scope, receive, downstream_send)
 
-        token = _REQUEST_DEADLINE.set(start + self.deadline_seconds if is_tool else None)
+        bound = {"deadline": start + self.deadline_seconds, "abandoned": False} if is_tool else None
+        token = _REQUEST_BOUND.set(bound)
         try:
             if is_tool:
                 task = asyncio.create_task(run_tool())
@@ -316,6 +369,7 @@ class RequestLoggingMiddleware:
                     )
                 except TimeoutError:
                     abandoned = True
+                    bound["abandoned"] = True
                     task.cancel()
                     task.add_done_callback(self._consume_task)
                     body.clear()
@@ -329,7 +383,7 @@ class RequestLoggingMiddleware:
             else:
                 await self.app(scope, receive, capture)
         finally:
-            _REQUEST_DEADLINE.reset(token)
+            _REQUEST_BOUND.reset(token)
             result = {}
             if is_tool and status == 200:
                 try:
@@ -380,18 +434,22 @@ class RequestLoggingMiddleware:
 
 
 class ToolTransportMiddleware:
-    def __init__(self, app):
+    def __init__(self, app, tool_secret=""):
         self.app = app
+        self.tool_secret = tool_secret
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or scope["method"] != "POST" or not scope["path"].startswith("/tools/"):
-            await self.app(scope, receive, send)
-            return
-        # Transport checks run before FastAPI parses the body or checks the tool secret.
+            return await self.app(scope, receive, send)
+        # Auth runs first so a bad secret never has its body parsed or a phone logged.
         headers = dict(scope["headers"])
 
         async def reject(status, detail):
             await JSONResponse(status_code=status, content={"detail": detail})(scope, receive, send)
+
+        provided = headers.get(b"x-tool-secret", b"").decode("latin-1")
+        if self.tool_secret and not hmac.compare_digest(provided.encode("utf-8"), self.tool_secret.encode("utf-8")):
+            return await reject(401, "bad tool secret")
 
         content_type = headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
         if content_type != b"application/json":
@@ -448,7 +506,7 @@ def create_app() -> FastAPI:
     default_shop = shops[settings.shop_id]
     engine = None
     try:
-        engine = make_engine(settings.database_url)
+        engine = make_engine(settings.database_url, timeout_seconds=settings.tool_deadline_ms / 1000)
         check_schema(engine)
     except Exception:
         if engine is not None:
@@ -456,8 +514,7 @@ def create_app() -> FastAPI:
         raise RuntimeError("Database unavailable or schema missing; run alembic upgrade head") from None
 
     def check_deadline():
-        deadline = _REQUEST_DEADLINE.get()
-        if deadline is not None and time.monotonic() >= deadline:
+        if not write_is_open():
             raise _DeadlineExceeded
 
     @asynccontextmanager
@@ -471,7 +528,7 @@ def create_app() -> FastAPI:
     app.state.settings = settings
     app.state.shops = shops
     store = app.state.store = Store(engine, write_guard=check_deadline)
-    app.add_middleware(ToolTransportMiddleware)
+    app.add_middleware(ToolTransportMiddleware, tool_secret=settings.tool_secret)
     app.add_middleware(
         RequestLoggingMiddleware, deadline_ms=settings.tool_deadline_ms, default_shop_id=settings.shop_id
     )
@@ -548,6 +605,11 @@ def create_app() -> FastAPI:
         if date.fromisoformat(req.preferred_date) > datetime.now(shop.tz).date() + timedelta(days=60):
             return invalid_input("preferred_date", "I can only book up to 60 days out.")
         dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(tzinfo=shop.tz)
+        slot = shop.slot_start(dt)
+        if slot is not None and slot != dt:
+            step = shop.slot_minutes
+            example = f"09:00 or {9 + step // 60}:{step % 60:02d}"
+            return invalid_input("preferred_time", f"I need a time that starts a slot, like {example}.")
         problem = slot_problem(shop, dt)
         if problem is None:
             fields = req.model_dump(exclude={"preferred_date", "preferred_time", "shop_id"})
@@ -629,7 +691,7 @@ def create_app() -> FastAPI:
         shop = resolve_shop(req.shop_id)
         if shop is None:
             return UNKNOWN_SHOP
-        m = store.create_message(shop.shop_id, **req.model_dump(exclude={"vehicle", "shop_id"}))
+        m = store.create_message(shop.shop_id, **req.model_dump(exclude={"shop_id"}))
         lang = {
             "ht": " A Creole-speaking team member will call back.",
             "es": " Alguien que habla español le llamará.",
@@ -653,6 +715,8 @@ def create_app() -> FastAPI:
         db = store.board(shop, 50)
 
         def display(value):
+            if value is None:
+                return ""
             if isinstance(value, datetime):
                 return value.astimezone(config.tz).strftime("%Y-%m-%d %H:%M %Z")
             return str(value)
@@ -671,7 +735,7 @@ def create_app() -> FastAPI:
     <h1>{html.escape(str(config.name), quote=True)}: AI receptionist live board</h1>
     <h2>Appointments</h2>{table(db["appointments"], ["public_id", "slot_start", "customer_name", "phone", "vehicle", "service", "language"])}
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
-    <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "reason", "urgency", "callback_language"])}
+    <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "vehicle", "reason", "urgency", "callback_language"])}
     <h2>Open repair orders</h2>{table(db["repair_orders"], ["ro_number", "customer_name", "vehicle", "status", "eta"])}
     </body></html>"""
 
