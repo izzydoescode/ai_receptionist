@@ -14,6 +14,8 @@ import yaml
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 SHOP_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
+# Calls to a number no shop owns run as this pseudo-shop, which may only take messages.
+UNKNOWN_SHOP_ID = "unknown"
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 # Fla. Stat. 934.03 needs every party's consent, so each greeting must say the call may be recorded.
 RECORDING_NOTICES = {"en": "may be recorded", "es": "puede ser grabada", "fr": "peut être enregistré"}
@@ -114,6 +116,13 @@ class ShopConfig(_Frozen):
     first_messages: dict[Language, Annotated[str, Field(min_length=1, max_length=500)]]
     features: Features = Features()
     persona: Persona
+
+    @field_validator("shop_id")
+    @classmethod
+    def _not_reserved(cls, value):
+        if value == UNKNOWN_SHOP_ID:
+            raise ValueError(f"{UNKNOWN_SHOP_ID} is reserved for calls to unrecognized numbers")
+        return value
 
     @field_validator("timezone")
     @classmethod
