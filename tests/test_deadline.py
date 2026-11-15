@@ -90,6 +90,6 @@ def test_committed_tool_timeout(path):
 
 
 def test_generated_tool_timeouts(tmp_path):
-    paths = make_tools.main([], out_dir=tmp_path)
+    paths = make_tools.main(out_dir=tmp_path, environ={"PUBLIC_BASE_URL": "https://example.test"})
     assert len(paths) == 4
     assert all(json.loads(path.read_text())["response_timeout_secs"] == 10 for path in paths)

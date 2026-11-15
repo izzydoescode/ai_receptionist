@@ -30,7 +30,7 @@ REQUIRED = {
 @pytest.fixture
 def generated_tools(tmp_path):
     # Write into tmp_path, never into the real tools/ directory.
-    load_script("make_tools").main(["https://example.test/"], out_dir=tmp_path)
+    load_script("make_tools").main(out_dir=tmp_path, environ={"PUBLIC_BASE_URL": "https://example.test/"})
     return tmp_path
 
 
@@ -56,14 +56,46 @@ def test_shop_id_is_bound_to_the_dynamic_variable_not_the_llm(generated_tools):
 
 
 def test_generator_defaults_to_placeholder_base_url(tmp_path):
-    load_script("make_tools").main([], out_dir=tmp_path)
+    load_script("make_tools").main(out_dir=tmp_path, environ={})
     config = json.loads((tmp_path / "take_message.json").read_text())
-    assert config["api_schema"]["url"] == "https://YOUR-NGROK-ID.ngrok-free.app/tools/take_message"
+    assert config["api_schema"]["url"] == "https://YOUR-BACKEND-HOST/tools/take_message"
+
+
+def test_generator_reads_public_base_url_from_the_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://bear.example.test")
+    load_script("make_tools").main(out_dir=tmp_path)
+    config = json.loads((tmp_path / "book_appointment.json").read_text())
+    assert config["api_schema"]["url"] == "https://bear.example.test/tools/book_appointment"
+
+
+@pytest.mark.parametrize("base", ["http://localhost:8000", "http://127.0.0.1:8000/"])
+def test_plain_http_is_allowed_only_for_local_testing(tmp_path, base):
+    load_script("make_tools").main(out_dir=tmp_path, environ={"PUBLIC_BASE_URL": base})
+    url = json.loads((tmp_path / "take_message.json").read_text())["api_schema"]["url"]
+    assert url == base.rstrip("/") + "/tools/take_message"
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "http://bear.example.test",
+        "ftp://bear.example.test",
+        "bear.example.test",
+        "https://",
+        "https://bear.example.test/api",
+        "https://bear.example.test?x=1",
+        "https://user:pw@bear.example.test",
+    ],
+)
+def test_bad_public_base_url_is_rejected_without_writing(tmp_path, base):
+    with pytest.raises(SystemExit, match="PUBLIC_BASE_URL"):
+        load_script("make_tools").main(out_dir=tmp_path, environ={"PUBLIC_BASE_URL": base})
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_committed_tool_json_matches_generator_output(tmp_path):
     make_tools = load_script("make_tools")
-    make_tools.main([], out_dir=tmp_path)
+    make_tools.main(out_dir=tmp_path, environ={})
     for name in REQUIRED:
         committed = json.loads((make_tools.TOOLS_DIR / f"{name}.json").read_text())
         assert committed == json.loads((tmp_path / f"{name}.json").read_text())
