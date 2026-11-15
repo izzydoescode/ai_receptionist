@@ -118,7 +118,12 @@ def clean_text(value):
     return value
 
 
+def integer_to_string(value):
+    return str(value) if isinstance(value, int) and not isinstance(value, bool) else value
+
+
 def normalize_phone(value):
+    value = integer_to_string(value)
     if not isinstance(value, str) or len(value) > 32:
         raise ValueError("invalid phone")
     digits = re.sub(r"\D", "", value)
@@ -161,8 +166,8 @@ class BookAppointment(BaseModel):
 
 
 class RepairStatus(BaseModel):
-    phone: Optional[str] = Field(default=None, max_length=32)
-    ro_number: Optional[str] = Field(default=None, max_length=20)
+    phone: Annotated[Optional[str], BeforeValidator(integer_to_string)] = Field(default=None, max_length=32)
+    ro_number: Annotated[Optional[str], BeforeValidator(integer_to_string)] = Field(default=None, max_length=20)
     last_name: Optional[str] = Field(default=None, max_length=80)
 
 
