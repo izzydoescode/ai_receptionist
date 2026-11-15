@@ -113,11 +113,12 @@ def test_security_workflow():
     for text in (
         "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/",
         "gitleaks_8.30.1_linux_x64.tar.gz",
-        "gitleaks_8.30.1_checksums.txt",
-        "sha256sum --check --ignore-missing",
+        "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+        "sha256sum --check",
         "./gitleaks git --redact --verbose --exit-code 1 --report-format sarif --report-path gitleaks.sarif .",
     ):
         assert text in runs
+    assert "checksums.txt" not in runs
     upload = step(leaks, "actions/upload-artifact")
     assert upload["if"] == "always()"
     assert upload["with"]["path"] == "gitleaks.sarif"
