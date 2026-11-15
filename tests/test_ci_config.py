@@ -133,9 +133,18 @@ def test_security_workflow():
 def test_dependabot():
     config = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text())
     assert config["version"] == 2
-    assert len(config["updates"]) == 2
+    assert len(config["updates"]) == 3
+    *versioned, docker = config["updates"]
+    # The base image is pinned by digest, so Dependabot proposes digest bumps for it.
+    assert docker == {
+        "package-ecosystem": "docker",
+        "directory": "/",
+        "schedule": {"interval": "weekly", "day": "monday"},
+        "open-pull-requests-limit": 2,
+        "commit-message": {"prefix": "build"},
+    }
     for entry, ecosystem, directory, prefix in zip(
-        config["updates"], ["pip", "github-actions"], ["/backend", "/"], ["deps", "ci"], strict=True
+        versioned, ["pip", "github-actions"], ["/backend", "/"], ["deps", "ci"], strict=True
     ):
         assert entry["package-ecosystem"] == ecosystem
         assert entry["directory"] == directory
