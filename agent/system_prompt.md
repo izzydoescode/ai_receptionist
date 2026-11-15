@@ -29,8 +29,8 @@ Collect: name, best phone (offer the caller ID: "Is this number good?"), year/ma
 Read it back in one sentence, then call book_appointment. If booked=false, offer the alternatives it returns. Give the confirmation code and tell them to bring keys + registration.
 
 ## 2. Repair status ("Is my car ready?")
-Ask for the phone on the ticket, the plate, the RO number or last name. Call check_repair_status.
-Before sharing details or price, confirm the caller's first name matches customer_first_name. If it doesn't match, only say "I'll have the service writer call the owner on file."
+Ask for the last name on the ticket plus the phone number on the ticket or the RO number. Call check_repair_status.
+If it returns needs, ask for the missing piece. If found=false otherwise, do not retry more than once and offer take_message. Never reveal any record information when found=false.
 Report status + ETA in plain words. Prices are estimates: "around," "the writer will confirm."
 If ready_for_pickup: remind them of hours.
 

@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import uuid
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -89,6 +90,22 @@ STATUS_TEXT = {
 }
 
 
+REPAIR_STATUS_NEEDS = {
+    "found": False,
+    "needs": ["last_name", "phone_or_ro_number"],
+    "message": "I need the last name on the repair order plus the phone number on the ticket or the RO number.",
+}
+REPAIR_STATUS_FAILURE = {
+    "found": False,
+    "message": "I couldn't verify that repair order. Offer to take a message for the service writer.",
+}
+
+
+def normalize_name(value: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", value)
+    return "".join(char for char in decomposed if not unicodedata.combining(char)).casefold().strip()
+
+
 # ---------- models ----------
 class BookAppointment(BaseModel):
     customer_name: str
@@ -104,7 +121,6 @@ class BookAppointment(BaseModel):
 class RepairStatus(BaseModel):
     phone: Optional[str] = None
     ro_number: Optional[str] = None
-    plate: Optional[str] = None
     last_name: Optional[str] = None
 
 
@@ -228,20 +244,30 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/check_repair_status", dependencies=[Depends(check_secret)])
     def check_repair_status(req: RepairStatus):
-        db = load()
-        p, ro = digits(req.phone), (req.ro_number or "").strip()
-        plate = (req.plate or "").replace(" ", "").upper()
-        ln = (req.last_name or "").strip().lower()
-        hits = [r for r in db["repairs"] if
-                (ro and r["ro"] == ro) or (p and digits(r["phone"]) == p) or
-                (plate and r["plate"] == plate) or (ln and r["customer"].lower().split()[-1] == ln)]
-        if not hits:
-            return {"found": False, "message": "No open repair order matches. Offer to take a message for the service writer."}
+        last_name = (req.last_name or "").strip()
+        phone = (req.phone or "").strip()
+        ro = (req.ro_number or "").strip()
+        if not last_name or not (phone or ro):
+            return REPAIR_STATUS_NEEDS
+
+        names = {normalize_name(last_name), normalize_name(last_name.split()[-1])}
+        phone_digits = re.sub(r"\D", "", phone)
+        hits = []
+        for record in load()["repairs"]:
+            customer_tokens = record["customer"].split()
+            if not customer_tokens or normalize_name(customer_tokens[-1]) not in names:
+                continue
+            if phone and (len(phone_digits) < 10 or digits(record["phone"]) != phone_digits[-10:]):
+                continue
+            if ro and record["ro"] != ro:
+                continue
+            hits.append(record)
+        if len(hits) != 1:
+            return REPAIR_STATUS_FAILURE
         r = hits[0]
         return {"found": True, "ro_number": r["ro"], "customer_first_name": r["customer"].split()[0],
                 "vehicle": r["vehicle"], "status": STATUS_TEXT.get(r["status"], r["status"]),
-                "details": r["note"], "eta": r["eta"], "estimated_balance": r["balance_estimate"],
-                "verify": "Confirm the caller's first name matches before sharing details or price."}
+                "details": r["note"], "eta": r["eta"], "estimated_balance": r["balance_estimate"]}
 
     @app.post("/tools/request_tow", dependencies=[Depends(check_secret)])
     def request_tow(req: TowRequest):
