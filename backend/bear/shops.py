@@ -209,6 +209,49 @@ class ShopConfig(_Frozen):
                         yield start
                     start += step
 
+    def hours_text(self, today: date, max_holidays: int = 5) -> str:
+        """Weekly hours with matching consecutive days grouped, plus upcoming holidays."""
+        groups: list[tuple[str, int, int]] = []
+        for weekday in range(7):
+            spans = " and ".join(
+                f"{speak_time(i.open)} to {speak_time(i.close)}" for i in self.hours.for_weekday(weekday)
+            )
+            if groups and groups[-1][0] == spans:
+                groups[-1] = (spans, groups[-1][1], weekday)
+            else:
+                groups.append((spans, weekday, weekday))
+        parts = []
+        for spans, first, last in groups:
+            days = WEEKDAYS[first].capitalize()
+            if last != first:
+                days += f" to {WEEKDAYS[last].capitalize()}"
+            parts.append(f"{days} {spans}" if spans else f"closed {days}")
+        text = "; ".join(parts) + "."
+        upcoming = sorted(day for day in self.holidays if day >= today)[:max_holidays]
+        if upcoming:
+            names = [f"{d:%A}, {d:%B} {d.day}, {d.year}" for d in upcoming]
+            listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+            text += f" Closed for holidays on {listed}."
+        return text
+
+    def services_text(self) -> str:
+        return ", ".join(self.services)
+
+    def features_text(self) -> str:
+        """Tell the agent what the shop can and cannot do, so it never promises a missing feature."""
+        f = self.features
+        return " ".join(
+            [
+                "We send a text confirmation after booking."
+                if f.sms_confirmations
+                else "We do not send text confirmations.",
+                "Tow requests are dispatched automatically."
+                if f.tow_dispatch
+                else "Tow requests go to staff, who call back; there is no automatic dispatch.",
+                "Callers can text photos to this number." if f.photo_texting else "We cannot receive photos by text.",
+            ]
+        )
+
 
 def speak_time(value: time) -> str:
     """Format 13:30 as "1:30 PM" for the voice agent."""
