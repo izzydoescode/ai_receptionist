@@ -15,7 +15,8 @@ For each line, record the reviewer's initials and the date in the last column. I
 ## In-call lines
 | # | Lang | Where | Line | Check | Signed off |
 |---|---|---|---|---|---|
-| 5 | HT | `agent/system_prompt.md`, "Haitian Creole" step 1 | Bonjou! Mwen pa pale Kreyòl byen. Nou ka pale franse, anglè oswa panyòl, oswa mwen pran mesaj ou epi yon moun ki pale Kreyòl ap rele w tounen. | Spelling and tone. **Promise:** "someone who speaks Kreyòl will call you back". The shop must have a Kreyòl speaker. | |
+| 5a | HT | `backend/bear/shops.py` `KREYOL_BRIDGE_STAFFED`, sent in `callback_text` when the shop lists `ht` in `callback_languages` | Bonjou! Mwen pa pale Kreyòl byen. Nou ka pale franse, anglè oswa panyòl, oswa mwen pran mesaj ou epi yon moun ki pale Kreyòl ap rele w tounen. | Spelling and tone. Promises "someone who speaks Kreyòl will call you back", so it's only used when `ht` is listed. | |
+| 5b | HT | `backend/bear/shops.py` `KREYOL_BRIDGE_UNSTAFFED`, used otherwise | Bonjou! Mwen pa pale Kreyòl byen. Nou ka pale franse, anglè oswa panyòl, oswa mwen pran mesaj ou epi garaj la ap rele w tounen. | New line: "…or I take your message and the garage will call you back." Check that it reads naturally and promises no language. | |
 | 6 | ES | `backend/main.py` `take_message` reply (read by the agent) | Alguien que habla español le llamará. | **Promise:** a Spanish speaker calls back. The shop must have one. | |
 | 7 | ES | prompt, "Spanish" style notes | carro, goma (tire), frenos, aire acondicionado, chapistería/hojalatería | Words callers actually use in South Florida | |
 
