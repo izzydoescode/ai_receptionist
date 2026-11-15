@@ -40,11 +40,19 @@ The summary is ElevenLabs' own text, so it can mention what the caller said, suc
 
 Transcripts and audio stay in ElevenLabs under the agent's retention settings. A per-shop option to keep full transcripts in Bear isn't built yet.
 
+Call summaries stay in Bear's database and on `/admin` with no expiry and no auto-delete. That's the cheap, reversible default until the shop decides otherwise. A later retention job (30–90 days is common) or a delete path for a caller's request can be added without changing how summaries are stored today.
+
 ## Setup (manual)
 
 1. **ElevenLabs → Agents settings → Post-call webhook:** create a webhook pointing at `https://<backend host>/elevenlabs/post-call`, with HMAC authentication.
 2. Turn on **transcription** events. Leave **Send audio data** off: Bear ignores audio, and audio bodies can go over the 2 MB limit.
 3. Copy the generated shared secret into `POST_CALL_WEBHOOK_SECRET` on the backend. It must differ from `TOOL_SECRET` and `INIT_WEBHOOK_SECRET`. Restart, then check the board after a test call.
 4. Optional: turn on webhook retries. They're safe, because a repeated conversation id is ignored.
+
+## Launch checklist
+
+- [ ] Agree with the shop how long call summaries should be kept. The default is to keep them on `/admin` with no auto-delete. Don't turn on a first real line until that's an explicit decision; a retention job or a caller-request delete path can be added later.
+- [ ] Set `POST_CALL_WEBHOOK_SECRET`, point the ElevenLabs post-call webhook at `/elevenlabs/post-call`, and turn on transcription events only (leave audio off).
+- [ ] After a test call, confirm the summary appears on `/admin` and that no transcript, audio or phone number was stored.
 
 The test fixtures in `tests/fixtures/elevenlabs/` follow the example payloads in the ElevenLabs post-call webhook docs, with demo data.
