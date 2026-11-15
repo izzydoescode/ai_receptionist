@@ -440,7 +440,7 @@ def create_app() -> FastAPI:
     if not settings.tool_secret:
         logging.getLogger("bear").warning("TOOL_SECRET is unset; tool authentication is disabled in dev")
 
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", settings.shop_id):
+    if not re.fullmatch(SHOP_ID_PATTERN, settings.shop_id):
         raise RuntimeError("invalid SHOP_ID")
     shops = load_shops(settings.shops_dir)
     if settings.shop_id not in shops:
@@ -645,7 +645,7 @@ def create_app() -> FastAPI:
     def admin(shop: str | None = None):
         """Live board for the requested shop."""
         shop = settings.shop_id if shop is None else shop
-        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", shop):
+        if not re.fullmatch(SHOP_ID_PATTERN, shop):
             raise HTTPException(status_code=400, detail="invalid shop")
         if shop not in shops:
             raise HTTPException(status_code=404, detail="unknown shop")
