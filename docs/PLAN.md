@@ -210,7 +210,7 @@ Acceptance: a test checks that every `first_messages` value in each shop config 
 - *The per-feature wording lives in `features_text`: the real promise when a feature is on, and the exact fallback line when it is off. The prompt flows point at it, so a shop with features off never has "text photos", "15 minutes" or "24/7" in its rendered prompt. Tests render the prompt with the webhook's variables, once with every feature off and once with every feature on.*
 - *`request_tow` promises the 15-minute dispatcher only with `tow_dispatch`. Otherwise it relays the fallback line, with the 911 warning still first for unsafe callers. `take_message` says "the shop will call back as soon as possible", with no time promise.*
 - *Shop config validation already required each language's notice (Task 7). The new tests also check that the notice comes before the greeting's question, in `shops/*.yaml` and in the prompt's table (including the HT line, "ka anrejistre"). The demo shop's French greeting now uses the spec wording, "L'appel peut être enregistré".*
-- *Left as is and flagged in `docs/TRANSLATION_REVIEW.md`: the Kreyòl bridge line and the `take_message` replies that promise a Kreyòl- or Spanish-speaking callback. They are only true if the shop has those staff. A per-shop flag for that could come later.*
+- *Follow-up (`dev/per-shop-callback-languages`): a per-shop `callback_languages` list (default `[en]`) now gates those promises. The Kreyòl bridge line comes from the `callback_text` dynamic variable and promises a Kreyòl-speaking callback only when `ht` is listed. `take_message` promises a language callback only for a listed language.*
 
 ## Phase E: Deployment
 
