@@ -1,7 +1,7 @@
 {
   "type": "webhook",
   "name": "take_message",
-  "description": "Leave a message for the service writer/owner: after hours, estimate requests needing a human, unknown questions, failed transfers, or Haitian Creole callers who want a Creole-speaking callback.",
+  "description": "Leave a message for the service writer/owner: after hours, estimate requests needing a human, unknown questions, failed transfers, or Haitian Creole callers who want a Creole-speaking callback. If it returns ok=false with invalid_input, re-ask for that field. If it returns timeout or internal_error, apologize and tell them someone from the shop will call them back.",
   "response_timeout_secs": 10,
   "api_schema": {
     "url": "https://YOUR-BACKEND-HOST/tools/take_message",
@@ -46,6 +46,10 @@
         "shop_id": {
           "type": "string",
           "dynamic_variable": "shop_id"
+        },
+        "conversation_id": {
+          "type": "string",
+          "dynamic_variable": "conversation_id"
         }
       },
       "required": [

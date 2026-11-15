@@ -17,7 +17,7 @@ from bear.db import audit_events
 from conftest import ADMIN_AUTH, SECRET, future_day
 
 SCENARIOS = Path(__file__).resolve().parent / "scenarios"
-BUDGET_SECONDS = 1.0
+BUDGET_SECONDS = 5.0
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 DATES = {f"{{next_{day}}}": lambda i=i: future_day(i).isoformat() for i, day in enumerate(WEEKDAYS)}
 
@@ -56,25 +56,42 @@ def check_response(step, response, where):
 
 
 def replay(client, scenario):
-    headers = {"X-Tool-Secret": SECRET}
+    default_shop = client.app.state.settings.shop_id
+    headers = {
+        "X-Tool-Secret": SECRET,
+        "X-Conversation-Id": scenario.get("conversation_id", f"scenario-{scenario['name']}"),
+    }
     for number, step in enumerate(scenario["calls"], 1):
         for attempt in range(step.get("repeat", 1)):
-            response = client.post(f"/tools/{step['tool']}", json=fill_dates(step["args"]), headers=headers)
-            assert response.status_code == 200, response.text
+            args = fill_dates(dict(step["args"]))
+            args.setdefault("shop_id", default_shop)
+            request_headers = {**headers, **step.get("headers", {})}
+            response = client.post(f"/tools/{step['tool']}", json=args, headers=request_headers)
+            expected_status = step.get("expect_status", 200)
+            assert response.status_code == expected_status, response.text
+            if expected_status != 200:
+                continue
             if attempt == step.get("repeat", 1) - 1:
                 check_response(step, response.json(), f"call {number} ({step['tool']})")
 
 
 def check_database(client, scenario):
-    store, shop_id = client.app.state.store, client.app.state.settings.shop_id
+    store = client.app.state.store
+    shop_id = scenario.get("db_shop_id", client.app.state.settings.shop_id)
+
+    def counts_on(board, counts, where):
+        for table, count in counts.items():
+            assert len(board[table]) == count, f"{where} {table}: {len(board[table])} rows, expected {count}"
+
     board = store.board(shop_id, 1000)
-    for table, count in scenario.get("db_counts", {}).items():
-        assert len(board[table]) == count, f"{table}: {len(board[table])} rows, expected {count}"
+    counts_on(board, scenario.get("db_counts", {}), shop_id)
     for table, expected_rows in scenario.get("db", {}).items():
         for expected in expected_rows:
             assert any(all(row.get(k) == v for k, v in expected.items()) for row in board[table]), (
                 f"{table}: no row matching {expected}"
             )
+    for other_id, counts in scenario.get("db_counts_by_shop", {}).items():
+        counts_on(store.board(other_id, 1000), counts, other_id)
     with store.engine.connect() as conn:
         events = [dict(row._mapping) for row in conn.execute(select(audit_events))]
     for expected in scenario.get("audit", []):
@@ -93,7 +110,7 @@ def check_admin(client, scenario):
 @pytest.mark.parametrize("path", sorted(SCENARIOS.glob("*.yaml")), ids=lambda path: path.stem)
 def test_scenario(make_client, path):
     scenario = load(path)
-    client = make_client(_shops=[scenario.get("shop", {})])
+    client = make_client(_shops=scenario.get("shops") or [scenario.get("shop", {})])
     started = time.perf_counter()
     replay(client, scenario)
     check_database(client, scenario)

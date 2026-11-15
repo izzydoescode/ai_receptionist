@@ -93,6 +93,7 @@ uvicorn --factory main:create_app --reload --port 8000 --no-access-log
 |---|---|---|---|
 | `TOOL_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret every `/tools/*` call must send in `X-Tool-Secret`. Min 32 chars. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
 | `INIT_WEBHOOK_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret ElevenLabs must send in `X-Init-Webhook-Secret` to `POST /elevenlabs/init`. Min 32 chars and different from `TOOL_SECRET`. |
+| `INIT_WEBHOOK_SECRET_PREVIOUS` | no | none | Previous init secret, also accepted during rotation. If set, same 32-char and not-`TOOL_SECRET` rules as `INIT_WEBHOOK_SECRET`. |
 | `POST_CALL_WEBHOOK_SECRET` | for call summaries | none | HMAC secret ElevenLabs generates for the post-call webhook. If it's unset, `POST /elevenlabs/post-call` returns 503. It must differ from `TOOL_SECRET` and `INIT_WEBHOOK_SECRET`. See `docs/ELEVENLABS_POST_CALL.md`. |
 | `ADMIN_USER` | no | `admin` | HTTP Basic username for `/admin`. |
 | `ADMIN_PASSWORD` | for `/admin` | none | HTTP Basic password. If unset, `/admin` returns 503. |

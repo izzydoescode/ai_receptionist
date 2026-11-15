@@ -120,6 +120,13 @@ def test_prompt_first_message_gives_the_recording_notice_first(language):
     assert 0 <= message.lower().find(NOTICES[language]) < question
 
 
+def test_prompt_repeats_the_recording_notice_on_the_first_language_switch():
+    text = PROMPT.lower()
+    assert "first time you switch language" in text
+    assert "recording notice" in text
+    assert "once in the new language" in text
+
+
 def test_french_first_message_is_french_only():
     assert first_messages_in_prompt()["fr"] == (
         "Bonjour, vous êtes bien chez {{shop_name}}. Je suis {{persona_name}}, l'assistant virtuel. "
