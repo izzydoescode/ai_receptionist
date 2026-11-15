@@ -69,7 +69,7 @@ On real calls the webhook overrides the first message with the shop's `first_mes
 | **en** (primary) | `{{shop_name}}, this is {{persona_name}}, the shop's virtual assistant. Calls may be recorded. Para español, solo hable en español. What can I do for you?` |
 | **es** | `Gracias por llamar a {{shop_name}}. Le habla {{persona_name}}, el asistente virtual del taller. La llamada puede ser grabada. ¿En qué le puedo ayudar?` |
 | **fr** (Creole fallback) | `Bonjour, vous êtes bien chez {{shop_name}}. Je suis {{persona_name}}, l'assistant virtuel. L'appel peut être enregistré. Comment puis-je vous aider ?` |
-| **ht** (pre-recorded / external TTS only, see README "Haitian Creole") | `Bonjou, ou rele {{shop_name}}. Mwen se {{persona_name}}, asistan vityèl garaj la. Apèl la ka anrejistre. Kijan mwen ka ede w jodi a?` |
+| **ht** (pre-recorded / external TTS only, see README "Haitian Creole") | `Bonjou, ou sou liy {{shop_name}}. Mwen se {{persona_name}}, asistan vityèl garaj la. Apèl la ka anrejistre. Kijan mwen ka ede w jodi a?` |
 
 > Have native speakers sign off every ES, FR and HT line in `docs/TRANSLATION_REVIEW.md` before using them with real customers. Get the shop owner's OK before using any real shop name.
 
