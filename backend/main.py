@@ -825,16 +825,31 @@ def create_app() -> FastAPI:
             return str(value)
 
         def table(rows, cols):
-            h = "".join(f"<th>{html.escape(str(c), quote=True)}</th>" for c in cols)
-            b = "".join(
-                "<tr>" + "".join(f"<td>{html.escape(display(r.get(c, '')), quote=True)}</td>" for c in cols) + "</tr>"
-                for r in rows
-            )
+            def th(col):
+                name = html.escape(str(col), quote=True)
+                if col in {"urgency", "callback_language"}:
+                    return f'<th class="standout">{name}</th>'
+                return f"<th>{name}</th>"
+
+            def td(col, row):
+                value = row.get(col, "")
+                text = html.escape(display(value), quote=True)
+                classes = []
+                if col == "urgency" and str(value).lower() == "high":
+                    classes.append("urgency-high")
+                if col == "callback_language" and value not in (None, "", "en"):
+                    classes.append("callback-other")
+                attr = f' class="{" ".join(classes)}"' if classes else ""
+                return f"<td{attr}>{text}</td>"
+
+            h = "".join(th(c) for c in cols)
+            b = "".join("<tr>" + "".join(td(c, r) for c in cols) + "</tr>" for r in rows)
             return f"<table><tr>{h}</tr>{b}</table>"
 
         return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(board_name), quote=True)} board</title>
     <style>body{{font-family:system-ui;margin:24px}}table{{border-collapse:collapse;margin-bottom:24px}}
-    td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}</style></head><body>
+    td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}
+    th.standout{{background:#4a3b14}}td.urgency-high{{background:#f6c1c1;font-weight:700}}td.callback-other{{background:#ffe08a;font-weight:700}}</style></head><body>
     <h1>{html.escape(str(board_name), quote=True)}: AI receptionist live board</h1>
     <h2>Appointments</h2>{table(db["appointments"], ["public_id", "slot_start", "customer_name", "phone", "vehicle", "service", "language"])}
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
