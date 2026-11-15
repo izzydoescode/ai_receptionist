@@ -25,7 +25,6 @@ def test_greeting_gives_the_recording_notice_before_the_question(file, language,
     assert 0 <= fold(message).find(fold(RECORDING_NOTICES[language][0])) < question
 
 
-
 def test_demo_shop_yaml_comments_distinguish_agent_and_staff_languages():
     text = next(p for p in SHOP_FILES if p.name == "vice-city-auto.yaml").read_text("utf-8").casefold()
     assert "what the voice agent speaks" in text
