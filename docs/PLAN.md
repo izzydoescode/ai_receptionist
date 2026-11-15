@@ -87,7 +87,7 @@ Acceptance:
 
 ## Phase B: Persistence
 
-### Task 5: Storage layer (SQLite locally, Postgres-ready)
+### Task 5: Storage layer (SQLite locally, Postgres-ready) (done on `dev/sqlite-postgres-persistence`)
 - SQLAlchemy 2.x with Alembic, configured by `DATABASE_URL`. Default is `sqlite:///./vicecity.db`. A `postgresql+psycopg://` URL must work unchanged.
 - Tables: `appointments`, `repair_orders`, `tows`, `messages`, `audit_events`. Every row has `shop_id`, UTC timestamps and a public id like `A1B2C3`.
 - A repository module (`backend/bear/store.py`) holds all data access. Endpoints never touch the session directly.
@@ -100,10 +100,20 @@ Acceptance:
 - `alembic upgrade head` works on an empty SQLite file.
 - The README shows how to point at Postgres. Optional docker-compose Postgres test, marked `@pytest.mark.pg` and skipped by default.
 
-### Task 6: Admin board on the DB, per shop
+### Task 6: Admin board on the DB, per shop (done on `dev/sqlite-postgres-persistence`)
 - `/admin?shop=vice-city-auto` reads from the store and is still escaped and behind auth. It shows the newest 50 of each type, and timestamps in the shop's time zone.
 
 Acceptance: snapshot-style test of the rendered table rows, and a test that shop A's rows don't appear on shop B's board.
+
+*Decisions at implementation (Tasks 5-6, full contract in `docs/PERSISTENCE.md`):*
+- *The demo shop is the made-up `vice-city-auto` (Vice City Auto). The default DB is `sqlite:///./vicecity.db`.*
+- *The repository is `backend/bear/store.py`, with SQLAlchemy Core tables in `bear/db.py`.*
+- *No overbooking: lowest free bay inside a savepoint, retried on `uq_appointments_shop_slot_bay` conflicts. A 10-thread test passes on SQLite (`BEGIN IMMEDIATE`) and Postgres 17.*
+- *Public ids are a prefix plus 6 hex characters, with a retry on collision.*
+- *Every write runs a `write_guard` just before commit, so a timed-out request rolls back.*
+- *Audit events record only event, id and outcome, with no PII.*
+- *The app never creates or seeds tables; run `alembic upgrade head` and optionally `python -m bear.seed --demo`.*
+- *`/admin?shop=` uses one admin credential for every shop until per-shop auth exists. The shop time zone is still the global `SHOP_TZ` until Task 7.*
 
 ## Phase C: Per-shop config
 
