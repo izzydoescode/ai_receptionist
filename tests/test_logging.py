@@ -305,3 +305,29 @@ def test_non_tool_logs_have_no_shop_id(client, caplog):
     with caplog.at_level(logging.INFO):
         response = client.get("/health")
     assert "shop_id" not in request_record(caplog, response, "GET", "/health")
+
+
+@pytest.mark.parametrize(
+    "called,headers_ok,shop",
+    [("+13055550110", True, "vice-city-auto"), ("+13055550999", True, "unknown"), ("+13055550110", False, None)],
+)
+def test_init_webhook_logs_shop_and_conversation_but_no_numbers(make_client, caplog, called, headers_ok, shop):
+    from conftest import INIT_SECRET
+
+    client = make_client(_seed=False)
+    headers = {"X-Init-Webhook-Secret": INIT_SECRET if headers_ok else "wrong"}
+    payload = {
+        "caller_id": "+13055550199",
+        "called_number": called,
+        "agent_id": "agent_demo",
+        "call_sid": "CA123",
+        "conversation_id": "conv_demo-1",
+    }
+    with caplog.at_level(logging.INFO):
+        response = client.post("/elevenlabs/init", json=payload, headers=headers)
+    entry = request_record(caplog, response, "POST", "/elevenlabs/init")
+    assert entry.get("shop_id") == shop
+    assert entry.get("conversation_id") == ("conv_demo-1" if headers_ok else None)
+    assert_private(caplog)
+    line = next(r.getMessage() for r in caplog.records if r.name == "bear.request")
+    assert "5550110" not in line and "5550999" not in line

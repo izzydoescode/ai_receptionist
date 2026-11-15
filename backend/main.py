@@ -362,7 +362,13 @@ class RequestLoggingMiddleware:
                     entry["field"] = result["field"]
             if error:
                 entry["error"] = error
-            tool_body = scope.get("state", {}).get("bear_body", {})
+            state = scope.get("state", {})
+            tool_body = state.get("bear_body", {})
+            if "bear_shop_id" in state:
+                # Set by the init webhook after auth; the dialed and calling numbers are never logged.
+                entry["shop_id"] = state["bear_shop_id"]
+                if "conversation_id" not in entry and _CORRELATION_ID.fullmatch(state["bear_conversation_id"]):
+                    entry["conversation_id"] = state["bear_conversation_id"]
             if is_tool:
                 shop_id = tool_body.get("shop_id")
                 shop_id = self.default_shop_id if shop_id is None else shop_id
@@ -575,6 +581,8 @@ def create_app() -> FastAPI:
         except ValueError:
             number = call.called_number
         shop = shops_by_number.get(number)
+        request.state.bear_shop_id = UNKNOWN_SHOP_ID if shop is None else shop.shop_id
+        request.state.bear_conversation_id = call.conversation_id
         if shop is None:
             reply = unknown_initiation()
         else:
