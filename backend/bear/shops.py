@@ -6,10 +6,12 @@ import re
 import unicodedata
 from collections.abc import Iterator
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
+import yaml
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 SHOP_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -202,3 +204,67 @@ class ShopConfig(_Frozen):
 def speak_time(value: time) -> str:
     """Format 13:30 as "1:30 PM" for the voice agent."""
     return f"{value.hour % 12 or 12}:{value.minute:02d} {'AM' if value.hour < 12 else 'PM'}"
+
+
+class ShopConfigError(RuntimeError):
+    """One or more shop files are missing or invalid; the message lists every problem."""
+
+
+def _location(loc) -> str:
+    path = ""
+    for part in loc:
+        path += f"[{part}]" if isinstance(part, int) else f".{part}" if path else str(part)
+    return path
+
+
+def _problems(name: str, error: ValidationError) -> list[str]:
+    # Only locations and messages: input values never reach logs or exceptions.
+    problems = []
+    for item in error.errors(include_input=False, include_url=False):
+        message = item["msg"].removeprefix("Value error, ")
+        where = _location(item["loc"])
+        problems.append(f"{name}: {where}: {message}" if where else f"{name}: {message}")
+    return problems
+
+
+def load_shops(directory: str | Path) -> dict[str, ShopConfig]:
+    """Load and validate every ``*.yaml`` file in ``directory``, failing on the first bad config set."""
+    directory = Path(directory)
+    if not directory.is_dir():
+        raise ShopConfigError(f"SHOPS_DIR {directory} is not a directory")
+    paths = sorted(directory.glob("*.yaml"))
+    if not paths:
+        raise ShopConfigError(f"SHOPS_DIR {directory} has no shop files (*.yaml)")
+
+    shops: dict[str, ShopConfig] = {}
+    numbers: dict[str, str] = {}
+    problems: list[str] = []
+    for path in paths:
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError as error:
+            mark = getattr(error, "problem_mark", None)
+            line = f" (line {mark.line + 1})" if mark is not None else ""
+            problems.append(f"{path.name}: invalid YAML{line}")
+            continue
+        if not isinstance(data, dict):
+            problems.append(f"{path.name}: must be a mapping of settings")
+            continue
+        try:
+            shop = ShopConfig.model_validate(data)
+        except ValidationError as error:
+            problems.extend(_problems(path.name, error))
+            continue
+        if shop.shop_id != path.stem:
+            problems.append(f"{path.name}: shop_id {shop.shop_id} must match the file name")
+            continue
+        if shop.twilio_number in numbers:
+            problems.append(
+                f"twilio_number {shop.twilio_number} is used by both {numbers[shop.twilio_number]} and {path.name}"
+            )
+            continue
+        numbers[shop.twilio_number] = path.name
+        shops[shop.shop_id] = shop
+    if problems:
+        raise ShopConfigError(f"Invalid shop config in {directory}:\n" + "\n".join(f"- {p}" for p in problems))
+    return shops
