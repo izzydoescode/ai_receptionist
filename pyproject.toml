@@ -1,0 +1,12 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["backend", "tools"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["backend", "tools"]
+omit = ["tests/*"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
