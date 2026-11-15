@@ -1,0 +1,36 @@
+{
+  "type": "webhook",
+  "name": "check_repair_status",
+  "description": "Look up the status of a car that is already at the shop. Use when a caller asks if their car is ready, what's going on, or how much. Provide at least one identifier.",
+  "response_timeout_secs": 20,
+  "api_schema": {
+    "url": "https://YOUR-NGROK-ID.ngrok-free.app/tools/check_repair_status",
+    "method": "POST",
+    "request_headers": {
+      "Content-Type": "application/json"
+    },
+    "request_body_schema": {
+      "type": "object",
+      "description": "Arguments for check_repair_status",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "description": "Phone number on the repair order, digits only"
+        },
+        "ro_number": {
+          "type": "string",
+          "description": "Repair order / ticket number if the caller has it"
+        },
+        "plate": {
+          "type": "string",
+          "description": "License plate, letters and numbers, no spaces"
+        },
+        "last_name": {
+          "type": "string",
+          "description": "Customer last name"
+        }
+      },
+      "required": []
+    }
+  }
+}

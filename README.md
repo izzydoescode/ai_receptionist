@@ -1,251 +1,71 @@
-<div id="top"></div>
-<!--
-*** Thanks for checking out the Best-README-Template. If you have a suggestion
-*** that would make this better, please fork the repo and create a pull request
-*** or simply open an issue with the tag "enhancement".
-*** Don't forget to give the project a star!
-*** Thanks again! Now go create something AMAZING! :D
--->
-
-
-
-<!-- PROJECT SHIELDS -->
-<!--
-*** I'm using markdown "reference style" links for readability.
-*** Reference links are enclosed in brackets [ ] instead of parentheses ( ).
-*** See the bottom of this document for the declaration of the reference variables
-*** for contributors-url, forks-url, etc. This is an optional, concise syntax you may use.
-*** https://www.markdownguide.org/basic-syntax/#reference-style-links
--->
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
-
-
-
-<!-- PROJECT LOGO -->
-<br />
-<div align="center">
-  <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="images/logo.png" alt="Logo" width="80" height="80">
-  </a>
-
-  <h3 align="center">Best-README-Template</h3>
-
-  <p align="center">
-    An awesome README template to jumpstart your projects!
-    <br />
-    <a href="https://github.com/othneildrew/Best-README-Template"><strong>Explore the docs »</strong></a>
-    <br />
-    <br />
-    <a href="https://github.com/othneildrew/Best-README-Template">View Demo</a>
-    ·
-    <a href="https://github.com/othneildrew/Best-README-Template/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/othneildrew/Best-README-Template/issues">Request Feature</a>
-  </p>
-</div>
-
-
-
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-      <ul>
-        <li><a href="#built-with">Built With</a></li>
-      </ul>
-    </li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
-      </ul>
-    </li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-    <li><a href="#contact">Contact</a></li>
-    <li><a href="#acknowledgments">Acknowledgments</a></li>
-  </ol>
-</details>
-
-
-
-<!-- ABOUT THE PROJECT -->
-## About The Project
-
-[![Product Name Screen Shot][product-screenshot]](https://example.com)
-
-There are many great README templates available on GitHub; however, I didn't find one that really suited my needs so I created this enhanced one. I want to create a README template so amazing that it'll be the last one you ever need -- I think this is it.
-
-Here's why:
-* Your time should be focused on creating something amazing. A project that solves a problem and helps others
-* You shouldn't be doing the same tasks over and over like creating a README from scratch
-* You should implement DRY principles to the rest of your life :smile:
-
-Of course, no one template will serve all projects since your needs may be different. So I'll be adding more in the near future. You may also suggest changes by forking this repo and creating a pull request or opening an issue. Thanks to all the people have contributed to expanding this template!
-
-Use the `BLANK_README.md` to get started.
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-### Built With
-
-This section should list any major frameworks/libraries used to bootstrap your project. Leave any add-ons/plugins for the acknowledgements section. Here are a few examples.
-
-* [Next.js](https://nextjs.org/)
-* [React.js](https://reactjs.org/)
-* [Vue.js](https://vuejs.org/)
-* [Angular](https://angular.io/)
-* [Svelte](https://svelte.dev/)
-* [Laravel](https://laravel.com)
-* [Bootstrap](https://getbootstrap.com)
-* [JQuery](https://jquery.com)
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-<!-- GETTING STARTED -->
-## Getting Started
-
-This is an example of how you may give instructions on setting up your project locally.
-To get a local copy up and running follow these simple example steps.
-
-### Prerequisites
-
-This is an example of how to list things you need to use the software and how to install them.
-* npm
-  ```sh
-  npm install npm@latest -g
-  ```
-
-### Installation
-
-1. Get a free API Key at [https://example.com](https://example.com)
-2. Clone the repo
-   ```sh
-   git clone https://github.com/your_username_/Project-Name.git
-   ```
-3. Install NPM packages
-   ```sh
-   npm install
-   ```
-4. Enter your API in `config.js`
-   ```js
-   const API_KEY = 'ENTER YOUR API';
-   ```
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-<!-- USAGE EXAMPLES -->
-## Usage
-
-Use this space to show useful examples of how a project can be used. Additional screenshots, code examples and demos work well in this space. You may also link to more resources.
-
-_For more examples, please refer to the [Documentation](https://example.com)_
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-<!-- ROADMAP -->
-## Roadmap
-
-- [x] Add Changelog
-- [x] Add back to top links
-- [] Add Additional Templates w/ Examples
-- [] Add "components" document to easily copy & paste sections of the readme
-- [] Multi-language Support
-    - [] Chinese
-    - [] Spanish
-
-See the [open issues](https://github.com/othneildrew/Best-README-Template/issues) for a full list of proposed features (and known issues).
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-<!-- CONTRIBUTING -->
-## Contributing
-
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-<!-- LICENSE -->
-## License
-
-Distributed under the MIT License. See `LICENSE.txt` for more information.
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-<!-- CONTACT -->
-## Contact
-
-Your Name - [@your_twitter](https://twitter.com/your_username) - email@example.com
-
-Project Link: [https://github.com/your_username/repo_name](https://github.com/your_username/repo_name)
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-<!-- ACKNOWLEDGMENTS -->
-## Acknowledgments
-
-Use this space to list resources you find helpful and would like to give credit to. I've included a few of my favorites to kick things off!
-
-* [Choose an Open Source License](https://choosealicense.com)
-* [GitHub Emoji Cheat Sheet](https://www.webpagefx.com/tools/emoji-cheat-sheet)
-* [Malven's Flexbox Cheatsheet](https://flexbox.malven.co/)
-* [Malven's Grid Cheatsheet](https://grid.malven.co/)
-* [Img Shields](https://shields.io)
-* [GitHub Pages](https://pages.github.com)
-* [Font Awesome](https://fontawesome.com)
-* [React Icons](https://react-icons.github.io/react-icons/search)
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-
-
-<!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/othneildrew/Best-README-Template.svg?style=for-the-badge
-[contributors-url]: https://github.com/othneildrew/Best-README-Template/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/othneildrew/Best-README-Template.svg?style=for-the-badge
-[forks-url]: https://github.com/othneildrew/Best-README-Template/network/members
-[stars-shield]: https://img.shields.io/github/stars/othneildrew/Best-README-Template.svg?style=for-the-badge
-[stars-url]: https://github.com/othneildrew/Best-README-Template/stargazers
-[issues-shield]: https://img.shields.io/github/issues/othneildrew/Best-README-Template.svg?style=for-the-badge
-[issues-url]: https://github.com/othneildrew/Best-README-Template/issues
-[license-shield]: https://img.shields.io/github/license/othneildrew/Best-README-Template.svg?style=for-the-badge
-[license-url]: https://github.com/othneildrew/Best-README-Template/blob/master/LICENSE.txt
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/othneildrew
-[product-screenshot]: images/screenshot.png
+# Bear: a multilingual AI phone receptionist for auto repair & body shops
+Hackathon starter kit · Miami AI Hackathon (Mel × ElevenLabs) · Sat Nov 14, 2026 · Miami Dade College Wolfson, 300 NE 2nd Ave, Bldg 2, 1st floor
+
+**The problem:** shop owners miss calls with their hands in an engine. Each missed call is a lost job, and half the calls that do get answered are just "is my car ready?"
+**What Bear does:** answers 24/7 in English, Spanish, and French (with a Kreyòl fallback, see below). It books drop-offs, checks repair status, logs tows, and takes messages, and it warm-transfers to the owner when needed.
+
+## ⚠️ Hackathon rules that matter (from the Luma page)
+- **Everything you build during the event has to be done in Mel** ("The Agentic Terminal"). Mel and agentic execution are **30%** of the score. Existing projects are allowed, but anything you develop during the hackathon must go through Mel, and you submit Mel session history or screenshots. Treat this kit as your pre-existing starting point, say so in your submission, and make every change today in Mel.
+- **Deadline conflict:** Luma says **6:00 PM ET**, but globalaihackathon.com says 8:00 PM ET. **Plan for 6:00 PM.** Demos run 6:00-7:30 PM, winners at 7:30 PM.
+- **To submit, you need:** a working prototype, a GitHub repo link, Mel history/screenshots, a description of the problem and how you used Mel, and a live demo or recording. Submit at https://www.globalaihackathon.com/submissions
+- **Credits:** one month of ElevenLabs Creator (131k credits) plus Mel Builder credits for participants. The "Best Use of ElevenLabs" prize is 3 months of Scale.
+
+## Architecture
+```
+Caller ──PSTN──> Twilio number ──(ElevenLabs native Twilio integration)──> ElevenLabs Agent "Bear"
+                                                     │  STT → LLM → TTS, language_detection, transfer_to_number
+                                                     │  webhook tools (HTTPS POST JSON)
+                                                     ▼
+                                   ngrok ──> FastAPI backend (backend/main.py)
+                                              /tools/book_appointment  /tools/check_repair_status
+                                              /tools/request_tow       /tools/take_message
+                                              /admin  (live board, auto-refresh, for the demo screen)
+                                              data.json (mock DB: 4 cars at the shop)
+```
+- **Phone options:** (a) **Twilio number imported into ElevenLabs.** The import auto-configures the number, and warm transfer works. This is the recommended path, about $1-2/mo for the number plus usage. (b) An ElevenLabs-native or SIP number if your account offers one. (c) No phone at all: use the agent's web test call or widget. **Keep (c) ready as a backup** in case venue Wi-Fi or Twilio trial limits cause problems.
+- **Twilio trial caveat:** trial accounts play a trial message and can usually only call verified numbers. Upgrade with about $20, or demo inbound from your verified cell.
+
+## Build plan (6 hours, roughly 12:00-6:00)
+| Time | Task |
+|---|---|
+| 12:00-12:30 | Check in, claim ElevenLabs Creator and Mel credits. Create the GitHub repo and push this kit **through Mel** so your first commit shows up in Mel history |
+| 12:30-1:15 | Backend: in Mel, run `cd backend && python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt && uvicorn main:app --reload --port 8000`. Then run `ngrok http 8000` and `python tools/make_tools.py https://<id>.ngrok-free.app`. Check `curl https://<id>.ngrok-free.app/health` |
+| 1:15-2:15 | ElevenLabs: create the agent (Blank) and paste `agent/system_prompt.md`. Add the first message, add the es and fr languages with their first messages, and turn on the language_detection and end_call tools. Add the 4 webhook tools from `tools/*.json` (or `ELEVENLABS_API_KEY=... python tools/create_tools_via_api.py`). Set the timezone to America/New_York. Use **Test AI agent** in the browser |
+| 2:15-3:00 | Voices: audition library voices or use Voice Design (`agent/agent_config_notes.md`). Assign the EN gruff voice and the es/fr voices |
+| 3:00-3:30 | Lunch (Gratitude Luncheon). Network, and ask the ElevenLabs folks about Kreyòl |
+| 3:30-4:15 | Phone: Twilio > buy a 305/954 number > ElevenLabs Agents > Phone Numbers > Import (SID + token, or an API key SK…/secret) > assign Bear. Add transfer_to_number (warm) to your cell. Call it |
+| 4:15-5:15 | Polish: test all 6 flows in EN and ES plus the Kreyòl fallback. Tighten the prompt and fix tool params. Optional stretch: Kreyòl greeting audio (below) |
+| 5:15-5:45 | Record a 2-min backup video of a call with the /admin board on screen. Write the submission blurb, export Mel screenshots |
+| 5:45-6:00 | **Submit.** Rehearse the pitch |
+
+## Haitian Creole: the honest answer
+- **ElevenLabs Agents doesn't support Haitian Creole right now** (checked Nov 14, 2026). Agents can use every language their TTS model supports, and new agents default to Eleven v4 Turbo. The Eleven v4 list (90+ languages), the v3 list, and the Scribe speech-to-text list all include French and Spanish but **not Haitian Creole**.
+  - https://elevenlabs.io/docs/help-center/product/eleven-agents/which-languages-can-i-use-with-eleven-agents
+  - https://elevenlabs.io/docs/overview/capabilities/text-to-speech/eleven-v4
+  - https://elevenlabs.io/docs/help-center/other/what-languages-do-you-support
+  - https://elevenlabs.io/docs/overview/capabilities/speech-to-text (Supported languages section)
+- **Fallback for the hackathon (what this kit does):** if a caller speaks Kreyòl, Bear switches to **French**, which ElevenLabs supports and many Haitian callers understand. It opens with one short Kreyòl line, then offers French, English, or Spanish, or takes a message flagged `callback_language: "ht"` so a Kreyòl-speaking person calls back. Pitch this as "French now, native Kreyòl on the roadmap."
+- **Stretch: real Kreyòl audio.** Google Cloud Text-to-Speech lists **Haitian Creole (Haiti), ht-HT**: https://docs.cloud.google.com/text-to-speech/docs/list-voices-and-types. Meta's open model **facebook/mms-tts-hat** also works: https://huggingface.co/facebook/mms-tts-hat. You can generate a Kreyòl greeting or IVR prompt ("Peze 3 pou Kreyòl") as audio and play it in a Twilio IVR in front of the agent.
+- **Roadmap: a full Kreyòl voice agent** would be a custom pipeline. Twilio Media Streams feeds a Kreyòl-capable STT (AssemblyAI advertises Haitian Creole: https://www.assemblyai.com/languages/haitian-creole; I haven't tested it), then an LLM, then Google ht-HT TTS. That's too much to build in a single afternoon.
+- Quick experiment: ElevenLabs TTS reading Kreyòl text with a French voice might sound passable, since Kreyòl spelling is phonetic, but it isn't supported. Test it before showing it to anyone.
+- Note: the Language doc says a language picked in the widget stays fixed for the call, while the language_detection tool switches languages based on what the caller says. Test switching on a real phone call.
+
+## Demo script (90 seconds, live call on speaker plus /admin on the projector)
+1. **Status (EN):** "Hey, it's Carlos, is my Malibu ready?" Bear checks the RO and says it's waiting on the wheel bearing, ready tomorrow by 3, around $480.
+2. **Booking (ES):** "Hola, necesito cambiar los frenos de mi Altima el lunes a las nueve." Bear switches to Spanish and books it. **The row appears on /admin live.**
+3. **Tow:** "My car's smoking on I-95 near exit 12." Bear asks about safety first and gives the 911 advice, then logs the tow, which shows up on /admin.
+4. **Kreyòl:** "Bonjou, mwen bezwen yon estimasyon pou pòt machin mwen." Bear switches to French and takes a message flagged for a Kreyòl callback. Say: "Native Creole is next, and here's the plan."
+5. **Transfer:** "Let me talk to the owner." Bear does a warm transfer to your phone, which rings in your pocket. Big finish.
+
+Reset between runs: `curl -X POST localhost:8000/admin/reset`
+
+## Files
+- `backend/main.py`, `backend/requirements.txt`: FastAPI tool server with a mock data store (`data.json` is created on first run)
+- `tools/*.json`: ElevenLabs webhook tool configs. `make_tools.py` regenerates them with your ngrok URL, and `create_tools_via_api.py` is an optional API upload (not tested, since there was no key)
+- `agent/system_prompt.md`: persona, language rules, the 6 call flows, guardrails, and first messages in EN/ES/FR/HT
+- `agent/agent_config_notes.md`: settings, voice picking, Voice Design prompts, transfer rule
+
+## To Do
+ElevenLabs account and API key (claim the hackathon credits) · Mel account (required for judging) · Twilio account, number purchase, and SID/token or API key · ngrok account and authtoken (`ngrok config add-authtoken …`) · a GitHub repo · your cell number for transfers · the shop owner's OK before using any real shop name or data · a native Kreyòl speaker to proofread the HT lines.
+Optional backend security: `export TOOL_SECRET=somethinglong`, then add an `X-Tool-Secret` secret header to each tool.
+Compliance note for real deployment: Florida requires all-party consent to record calls (Fla. Stat. 934.03), which is why the greeting says "calls may be recorded." Bear also tells callers it's an AI.
