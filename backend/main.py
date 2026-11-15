@@ -197,7 +197,7 @@ class BookAppointment(BaseModel):
 class RepairStatus(BaseModel):
     phone: Annotated[Optional[str], BeforeValidator(integer_to_string)] = Field(default=None, max_length=32)
     ro_number: Annotated[Optional[str], BeforeValidator(integer_to_string)] = Field(default=None, max_length=20)
-    last_name: Optional[str] = Field(default=None, max_length=80)
+    last_name: Annotated[Optional[str], BeforeValidator(clean_text)] = Field(default=None, max_length=80)
 
 
 class TowRequest(BaseModel):
