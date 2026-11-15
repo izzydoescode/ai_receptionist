@@ -107,3 +107,31 @@ def test_fly_env_holds_no_secrets():
     for name in SECRET_NAMES:
         assert name not in env
     assert all("secret" not in key.lower() and "password" not in key.lower() for key in env)
+
+
+def env_vars_read_by_the_app():
+    names = set()
+    for path in (ROOT / "backend").rglob("*.py"):
+        names |= set(re.findall(r"""os\.(?:getenv|environ\.get)\(\s*["']([A-Z_]+)["']""", path.read_text("utf-8")))
+    return names
+
+
+def test_deploy_doc_lists_every_env_var_the_app_reads():
+    doc = read("docs/DEPLOY.md")
+    names = env_vars_read_by_the_app() | {"PUBLIC_BASE_URL", "BEAR_MIGRATE_ON_BOOT", "FORWARDED_ALLOW_IPS"}
+    assert {"TOOL_SECRET", "INIT_WEBHOOK_SECRET", "DATABASE_URL", "SHOPS_DIR"} <= names
+    missing = sorted(name for name in names if f"`{name}`" not in doc)
+    assert not missing, missing
+
+
+def test_deploy_doc_sets_every_secret_with_fly_secrets():
+    doc = read("docs/DEPLOY.md")
+    for name in SECRET_NAMES:
+        assert re.search(rf"fly secrets set[^\n]*\b{name}=", doc) or re.search(rf"^\s+{name}=", doc, re.MULTILINE), name
+
+
+def test_deploy_doc_never_contains_a_literal_secret_value():
+    doc = read("docs/DEPLOY.md")
+    for name in ["TOOL_SECRET", "INIT_WEBHOOK_SECRET", "ADMIN_PASSWORD"]:
+        for value in re.findall(rf"\b{name}=(\S+)", doc):
+            assert value.startswith(("$", "<", '"$')), f"{name}={value}"
