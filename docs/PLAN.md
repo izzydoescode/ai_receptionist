@@ -176,7 +176,7 @@ Acceptance:
 - *The init log line has `shop_id` and the body's `conversation_id`, never the phone numbers.*
 - *The ElevenLabs docs were checked on Nov 15, 2026. The request matches. Optional response fields (`prompt`, `branch_id`, `environment`, `user_id`) aren't used.*
 
-### Task 9: Templated prompt and tool generation
+### Task 9: Templated prompt and tool generation (done on `dev/templated-prompt-and-tools`)
 - `agent/system_prompt.md` uses only dynamic variables for shop facts. No hard-coded hours.
 - `make_tools.py` reads `PUBLIC_BASE_URL` and writes tool JSON with the secret header as a reference, never the value.
 - Add `tools/README.md` describing the manual dashboard or API steps.
@@ -184,6 +184,13 @@ Acceptance:
 Acceptance:
 - Grepping for `YOUR-NGROK-ID`, hard-coded hours or "Vice City" in the prompt finds nothing.
 - Generated JSON round-trips, and a test diffs it against a fixture.
+
+*Decisions at implementation:*
+- *Three more init variables: `shop_timezone`, `languages_text` and `call_start_local`. `call_start_local` replaces `{{system__time}}` because that one follows the agent's single time zone and changes every turn, which breaks prompt caching. The agent now needs 11 placeholders.*
+- *The prompt templates the persona name, city, hours, services, features, time zone and languages. Tests reject "Vice City", `YOUR-NGROK-ID`, a fixed time zone, clock times and weekday ranges. The persona's "South Florida patience" style line and the Kreyòl-to-French steps are still fixed text. Per-shop style and `ht_fallback` wording could come later.*
+- *`make_tools.py` reads `PUBLIC_BASE_URL` (https, or http on localhost only) and `ELEVENLABS_TOOL_SECRET_ID`. `X-Tool-Secret` is written as `{"secret_id": ...}`, and the script refuses an id equal to `TOOL_SECRET`. It no longer takes a command-line URL, which is a breaking change. Tools now also send `X-Conversation-Id` from `system__conversation_id`.*
+- *The fixture is `tests/fixtures/tools/`. `create_tools_via_api.py` refuses to upload configs that still contain `YOUR-...` placeholders.*
+- *Left for Task 10: the false promises (photos, 15-minute dispatch, 24/7 calendar) and the French first message.*
 
 ## Phase D: Prompt and content fixes (can run in parallel with Phase B)
 
