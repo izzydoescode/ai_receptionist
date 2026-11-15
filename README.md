@@ -88,6 +88,8 @@ uvicorn --factory main:create_app --reload --port 8000 --no-access-log
 
 `main:app` no longer exists. The app is built by the `create_app()` factory, which reads settings when it starts. With the `CHANGE_ME` placeholder still in place it refuses to start (the secret is too short), which is on purpose.
 
+To run it in Docker or deploy it (Fly.io + Neon), see `docs/DEPLOY.md`.
+
 ### Environment
 | Variable | Required | Default | What it does |
 |---|---|---|---|
