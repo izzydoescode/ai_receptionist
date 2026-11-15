@@ -788,6 +788,15 @@ def create_app() -> FastAPI:
             )
             return f"<table><tr>{h}</tr>{b}</table>"
 
+        def call_row(row):
+            seconds = row["duration_secs"]
+            return {
+                **{key: "" if value is None else value for key, value in row.items()},
+                "duration": "" if seconds is None else f"{seconds // 60}:{seconds % 60:02}",
+            }
+
+        calls = [call_row(row) for row in db["call_summaries"]]
+
         return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(board_name), quote=True)} board</title>
     <style>body{{font-family:system-ui;margin:24px}}table{{border-collapse:collapse;margin-bottom:24px}}
     td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}</style></head><body>
@@ -796,6 +805,7 @@ def create_app() -> FastAPI:
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
     <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "reason", "urgency", "callback_language"])}
     <h2>Open repair orders</h2>{table(db["repair_orders"], ["ro_number", "customer_name", "vehicle", "status", "eta"])}
+    <h2>Recent calls</h2>{table(calls, ["started_at", "duration", "outcome", "title", "summary", "language", "conversation_id"])}
     </body></html>"""
 
     @app.post("/admin/reset")
