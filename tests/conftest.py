@@ -9,7 +9,7 @@ SECRET = "dummy-tool-secret-" + "x" * 22  # 40 characters
 ADMIN_AUTH = ("admin", "dummy-admin-password")
 CONFIG_KEYS = (
     "TOOL_SECRET", "BEAR_ENV", "ADMIN_USER", "ADMIN_PASSWORD",
-    "DATA_FILE", "SHOP_NAME", "SHOP_TZ",
+    "DATA_FILE", "SHOP_NAME", "SHOP_TZ", "TOOL_DEADLINE_MS",
 )
 
 
