@@ -74,3 +74,23 @@ def test_seed_cli_is_private(seeded_store):
     for row in records:
         for value in (row["customer_name"], row["phone"], row["phone"].removeprefix("+1")):
             assert value not in result.stdout + result.stderr
+
+
+def test_demo_customers_use_the_neutral_placeholder_names():
+    from bear.seed import DEMO_REPAIR_ORDERS
+
+    names = {r["ro_number"]: r["customer_name"] for r in DEMO_REPAIR_ORDERS}
+    assert names == {
+        "1001": "Carlos Rivera",
+        "1002": "Marie Jean-Baptiste",
+        "1003": "Daniel Brooks",
+        "1004": "Ana Gómez",
+    }
+
+
+def test_renamed_demo_customer_verifies_by_last_name_and_ro(client, tool_headers):
+    response = client.post(
+        "/tools/check_repair_status", json={"last_name": "Brooks", "ro_number": "1003"}, headers=tool_headers
+    )
+    assert response.json()["found"] is True
+    assert response.json()["customer_first_name"] == "Daniel"
