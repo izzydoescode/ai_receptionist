@@ -30,7 +30,8 @@ REQUIRED = {
 @pytest.fixture
 def generated_tools(tmp_path):
     # Write into tmp_path, never into the real tools/ directory.
-    load_script("make_tools").main(out_dir=tmp_path, environ={"PUBLIC_BASE_URL": "https://example.test/"})
+    environ = {"PUBLIC_BASE_URL": "https://example.test/", "ELEVENLABS_TOOL_SECRET_ID": "sec_test"}
+    load_script("make_tools").main(out_dir=tmp_path, environ=environ)
     return tmp_path
 
 
@@ -194,3 +195,16 @@ def test_tool_json_round_trips(directory):
     for path in directory.glob("*.json"):
         text = path.read_text("utf-8")
         assert json.dumps(json.loads(text), indent=2, ensure_ascii=False) == text
+
+
+@pytest.mark.parametrize(
+    "environ", [{}, {"PUBLIC_BASE_URL": "https://bear.example.test"}, {"ELEVENLABS_TOOL_SECRET_ID": "sec_x"}]
+)
+def test_api_creator_refuses_configs_with_placeholders(tmp_path, monkeypatch, environ):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "dummy-elevenlabs-key-for-tests")
+    calls = []
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: calls.append(a))
+    load_script("make_tools").main(out_dir=tmp_path, environ=environ)
+    with pytest.raises(SystemExit, match="placeholder"):
+        load_script("create_tools_via_api").main(tools_dir=tmp_path)
+    assert calls == []
