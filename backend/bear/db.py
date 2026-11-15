@@ -121,10 +121,10 @@ def database_url():
     return normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///./vicecity.db"))
 
 
-def make_engine(url):
+def make_engine(url, timeout_seconds=4):
     url = normalize_database_url(url)
     if url.startswith("sqlite://"):
-        engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 30})
+        engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": timeout_seconds})
 
         @event.listens_for(engine, "connect")
         def connect(dbapi_connection, connection_record):
@@ -132,7 +132,10 @@ def make_engine(url):
 
         @event.listens_for(engine, "begin")
         def begin(connection):
-            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            mode = connection.info.get("sqlite_begin", "DEFERRED")
+            if mode not in {"DEFERRED", "IMMEDIATE", "EXCLUSIVE"}:
+                mode = "DEFERRED"
+            connection.exec_driver_sql(f"BEGIN {mode}")
 
         return engine
     return create_engine(url, pool_pre_ping=True)

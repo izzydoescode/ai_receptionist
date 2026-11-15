@@ -487,7 +487,7 @@ def create_app() -> FastAPI:
         raise RuntimeError("invalid SHOP_ID")
     engine = None
     try:
-        engine = make_engine(settings.database_url)
+        engine = make_engine(settings.database_url, timeout_seconds=settings.tool_deadline_ms / 1000)
         check_schema(engine)
     except Exception:
         if engine is not None:

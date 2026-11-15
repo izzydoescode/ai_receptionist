@@ -21,10 +21,12 @@ class Store:
 
     @contextmanager
     def _write(self):
-        with self.engine.begin() as conn:
-            yield conn
-            if self.write_guard is not None:
-                self.write_guard()
+        with self.engine.connect() as conn:
+            conn.info["sqlite_begin"] = "IMMEDIATE"
+            with conn.begin():
+                yield conn
+                if self.write_guard is not None:
+                    self.write_guard()
 
     def _insert(self, conn, table, shop_id, prefix, created_at=None, **fields):
         values = dict(
