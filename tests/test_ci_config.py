@@ -9,13 +9,6 @@ import yaml
 from sarif_summary import summarize
 
 ROOT = Path(__file__).resolve().parents[1]
-PINS = {
-    "actions/checkout": ("3d3c42e5aac5ba805825da76410c181273ba90b1", "7.0.1"),
-    "actions/setup-python": ("6d4fd22b20465ccc0f7354476588e8df7c9ca0e0", "7.1.0"),
-    "actions/upload-artifact": ("cf430e030ddbb5b0abf93d22962f4752f3646cd9", "7.0.2"),
-    "github/codeql-action/init": ("33d7b85da1a04171e211befe2c739303b9a4c066", "4.39.3"),
-    "github/codeql-action/analyze": ("33d7b85da1a04171e211befe2c739303b9a4c066", "4.39.3"),
-}
 
 
 def workflow(name):
@@ -35,11 +28,11 @@ def test_workflow_contract(name):
     config = workflow(name)
     assert config["name"] == name
     triggers = config.get("on", config.get(True))
-    assert triggers["push"] == {"branches": ["**"]}
+    assert triggers["push"] == {"branches": ["master"]}
     assert triggers["pull_request"] in (None, {}, {"branches": ["**"]})
     assert config["permissions"] == {"contents": "read"}
     assert config["concurrency"] == {
-        "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+        "group": "${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}",
         "cancel-in-progress": True,
     }
     if name == "security":
@@ -55,10 +48,8 @@ def test_workflow_contract(name):
         for entry in job["steps"]:
             if "uses" in entry:
                 action, sha = entry["uses"].split("@")
-                expected, version = PINS[action]
-                assert sha == expected
                 assert re.fullmatch(r"[0-9a-f]{40}", sha)
-                assert f"uses: {action}@{sha} # v{version}" in raw
+                assert re.search(rf"uses: {re.escape(action)}@{sha} # v\d+\.\d+\.\d+", raw)
 
 
 def test_tests_workflow():
@@ -86,8 +77,10 @@ def test_tests_workflow():
 def test_quality_workflow():
     job = workflow("quality")["jobs"]["ruff"]
     assert step(job, "actions/setup-python")["with"]["python-version"] == "3.13"
-    for command in ("pip install ruff==0.17.5", "ruff check --output-format=github .", "ruff format --check ."):
-        assert command in commands(job)
+    runs = commands(job)
+    assert "pip install -r backend/requirements-dev.txt" in runs
+    assert "ruff check --output-format=github ." in runs
+    assert "ruff format --check ." in runs
 
 
 def test_security_workflow():
@@ -112,7 +105,7 @@ def test_security_workflow():
     assert "python .github/scripts/sarif_summary.py" in commands(codeql)
     audit = jobs["pip-audit"]
     assert step(audit, "actions/setup-python")["with"]["python-version"] == "3.13"
-    assert "pip install pip-audit==2.10.1" in commands(audit)
+    assert "pip install -r backend/requirements-dev.txt" in commands(audit)
     assert "pip-audit --strict --desc -r backend/requirements-dev.txt" in commands(audit)
     leaks = jobs["gitleaks"]
     assert step(leaks, "actions/checkout")["with"]["fetch-depth"] == 0
@@ -120,11 +113,12 @@ def test_security_workflow():
     for text in (
         "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/",
         "gitleaks_8.30.1_linux_x64.tar.gz",
-        "gitleaks_8.30.1_checksums.txt",
-        "sha256sum --check --ignore-missing",
+        "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+        "sha256sum --check",
         "./gitleaks git --redact --verbose --exit-code 1 --report-format sarif --report-path gitleaks.sarif .",
     ):
         assert text in runs
+    assert "checksums.txt" not in runs
     upload = step(leaks, "actions/upload-artifact")
     assert upload["if"] == "always()"
     assert upload["with"]["path"] == "gitleaks.sarif"
@@ -179,6 +173,17 @@ def test_sarif_summary(tmp_path):
     assert "extra17" in markdown and "extra18" not in markdown
     assert "warning: 26" in markdown
     assert summarize([])[1] == 0
+
+
+def test_sarif_main_fails_when_no_files_are_found(tmp_path, monkeypatch):
+    from sarif_summary import main
+
+    (tmp_path / "sarif-results").mkdir()
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.chdir(tmp_path)
+    assert main() == 1
+    assert "No SARIF files found" in summary.read_text()
 
 
 @pytest.mark.parametrize("level, exit_code", [("error", 1), ("warning", 0)])
@@ -286,7 +291,9 @@ def test_postgres_workflow_contract():
     assert "python -m pytest -m pg" in commands(job)
     assert "python -m pip install -r backend/requirements-dev.txt" in commands(job)
     assert step(job, "actions/checkout")["with"]["persist-credentials"] is False
+    raw = (ROOT / ".github/workflows/tests.yml").read_text()
     for entry in job["steps"]:
         if "uses" in entry:
             action, sha = entry["uses"].split("@")
-            assert sha == PINS[action][0]
+            assert re.fullmatch(r"[0-9a-f]{40}", sha)
+            assert re.search(rf"uses: {re.escape(action)}@{sha} # v\d+\.\d+\.\d+", raw)

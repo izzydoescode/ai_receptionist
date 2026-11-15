@@ -3,6 +3,7 @@
 import html
 import json
 import os
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -74,7 +75,14 @@ def summarize(paths):
 
 
 def main():
-    markdown, error_count = summarize(Path("sarif-results").glob("*.sarif"))
+    paths = sorted(Path("sarif-results").glob("*.sarif"))
+    if not paths:
+        message = "No SARIF files found in sarif-results/."
+        with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
+            summary.write(f"## CodeQL SARIF\n\n{message}\n")
+        print(message, file=sys.stderr)
+        return 1
+    markdown, error_count = summarize(paths)
     with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
         summary.write(markdown)
     return 1 if error_count else 0

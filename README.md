@@ -95,6 +95,7 @@ To run it in Docker or deploy it (Fly.io + Neon), see `docs/DEPLOY.md`.
 |---|---|---|---|
 | `TOOL_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret every `/tools/*` call must send in `X-Tool-Secret`. Min 32 chars. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
 | `INIT_WEBHOOK_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret ElevenLabs must send in `X-Init-Webhook-Secret` to `POST /elevenlabs/init`. Min 32 chars and different from `TOOL_SECRET`. |
+| `INIT_WEBHOOK_SECRET_PREVIOUS` | no | none | Previous init secret, also accepted during rotation. If set, same 32-char and not-`TOOL_SECRET` rules as `INIT_WEBHOOK_SECRET`. |
 | `ADMIN_USER` | no | `admin` | HTTP Basic username for `/admin`. |
 | `ADMIN_PASSWORD` | for `/admin` | none | HTTP Basic password. If unset, `/admin` returns 503. |
 | `BEAR_ENV` | no | none | Set to `dev` for local hacking: allows starting without `TOOL_SECRET` (tools are then open, with a warning) and enables `POST /admin/reset`. Never set it in production. |
