@@ -159,6 +159,21 @@ def test_repair_phone_mask(client, tool_headers, caplog):
     assert entry["phone"] == "***0101"
 
 
+
+def test_international_phone_is_masked(client, payloads, tool_headers, caplog):
+    with caplog.at_level(logging.DEBUG):
+        response = client.post(
+            "/tools/take_message",
+            json={**payloads["take_message"], "phone": "+509 3412 3456"},
+            headers=tool_headers,
+        )
+    assert response.status_code == 200 and response.json()["saved"] is True
+    entry = request_record(caplog, response, "POST", "/tools/take_message", "take_message")
+    assert entry["phone"] == "***3456"
+    texts = [r.getMessage() for r in caplog.records if r.name.startswith("bear")]
+    assert all("+50934123456" not in text and "509 3412 3456" not in text for text in texts)
+
+
 def test_unhandled_error_is_safe(client, payloads, tool_headers, monkeypatch, caplog):
     def broken_read(path):
         raise RuntimeError("Zelda Quixote 3055550199")

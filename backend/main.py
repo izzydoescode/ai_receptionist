@@ -134,14 +134,26 @@ def integer_to_string(value):
     return str(value) if isinstance(value, int) and not isinstance(value, bool) else value
 
 
+def is_nanp(digits):
+    # Area code and exchange must be [2-9]XX; this rejects 000-000-0000 and similar fakes.
+    return bool(re.fullmatch(r"[2-9]\d{2}[2-9]\d{6}", digits))
+
+
 def normalize_phone(value):
     value = integer_to_string(value)
     if not isinstance(value, str) or len(value) > 32:
         raise ValueError("invalid phone")
+    plus = value.strip().startswith("+")
     digits = re.sub(r"\D", "", value)
-    if len(digits) == 10:
+    if plus and 8 <= len(digits) <= 15:
+        if digits.startswith("1"):
+            # Country code 1 is NANP and must be +1 plus a 10-digit national number.
+            if len(digits) != 11 or not is_nanp(digits[1:]):
+                raise ValueError("invalid phone")
+        return "+" + digits
+    if len(digits) == 10 and is_nanp(digits):
         return "+1" + digits
-    if len(digits) == 11 and digits.startswith("1"):
+    if len(digits) == 11 and digits.startswith("1") and is_nanp(digits[1:]):
         return "+" + digits
     raise ValueError("invalid phone")
 
@@ -209,7 +221,7 @@ def invalid_input(field, message):
 
 def validation_message(field, error):
     hints = {
-        "phone": "I need a 10-digit phone number with area code.",
+        "phone": "I need a 10-digit US number, area code and all, or an international number starting with plus and the country code.",
         "preferred_date": "I need the date as year-month-day, like 2026-11-20.",
         "preferred_time": "I need the time in 24-hour format, like 09:30 or 14:00.",
         "language": "Language must be en, es, fr or ht.",

@@ -80,6 +80,27 @@ def test_phone_normalized(client, tool_headers, payloads, tool, phone):
     assert accept(client, tool_headers, payloads, tool, phone=phone)["phone"] == "+13055550199"
 
 
+@pytest.mark.parametrize("tool", WRITE_TOOLS)
+@pytest.mark.parametrize(
+    "phone",
+    ["000-000-0000", "0005550199", "111-555-1234", "305-055-1234", "305-155-1234", "+1 000 555 0100"],
+)
+def test_invalid_nanp_numbers_are_rejected(client, tool_headers, payloads, tool, phone):
+    reject(client, tool_headers, payloads, tool, "phone", phone, "10-digit")
+
+
+@pytest.mark.parametrize("tool", WRITE_TOOLS)
+@pytest.mark.parametrize("phone,stored", [("+509 3412 3456", "+50934123456"), ("+44 20 7946 0958", "+442079460958")])
+def test_international_e164_numbers_are_accepted(client, tool_headers, payloads, tool, phone, stored):
+    assert accept(client, tool_headers, payloads, tool, phone=phone)["phone"] == stored
+
+
+@pytest.mark.parametrize("tool", WRITE_TOOLS)
+@pytest.mark.parametrize("phone", ["+1234567", "+12345678", "+1234567890123456", "50934123456"])
+def test_international_numbers_need_plus_and_valid_length(client, tool_headers, payloads, tool, phone):
+    reject(client, tool_headers, payloads, tool, "phone", phone)
+
+
 @pytest.mark.parametrize("field,limit", [("phone", 32), ("ro_number", 20), ("last_name", 80)])
 def test_repair_factor_max_length(client, tool_headers, payloads, field, limit):
     reject(client, tool_headers, payloads, "check_repair_status", field, "x" * (limit + 1))
