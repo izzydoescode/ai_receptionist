@@ -37,6 +37,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
+from bear.alerts import log_staff_alert, warn_if_prod_log_only
 from bear.db import check_schema, make_engine
 from bear.initiation import InitRequest, shop_initiation, unknown_initiation
 from bear.post_call import parse_transcription
@@ -62,6 +63,7 @@ class Settings:
     post_call_webhook_secret: str = ""
     tool_deadline_ms: int = 4000
     admin_user: str = "admin"
+    alerts_mode: str = "log"
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -71,6 +73,9 @@ class Settings:
                 raise ValueError
         except ValueError:
             raise RuntimeError("TOOL_DEADLINE_MS must be a positive integer") from None
+        alerts_mode = os.getenv("ALERTS_MODE", "log")
+        if alerts_mode not in {"log", "off"}:
+            raise RuntimeError("ALERTS_MODE must be log or off")
         return cls(
             tool_deadline_ms=deadline_ms,
             tool_secret=os.getenv("TOOL_SECRET", ""),
@@ -83,6 +88,7 @@ class Settings:
             database_url=os.getenv("DATABASE_URL", "sqlite:///./vicecity.db"),
             shop_id=os.getenv("SHOP_ID", "vice-city-auto"),
             shops_dir=os.getenv("SHOPS_DIR") or str(DEFAULT_SHOPS_DIR),
+            alerts_mode=alerts_mode,
         )
 
 
@@ -549,6 +555,7 @@ def create_app() -> FastAPI:
         raise RuntimeError("POST_CALL_WEBHOOK_SECRET must differ from TOOL_SECRET and INIT_WEBHOOK_SECRET")
     if not settings.post_call_webhook_secret:
         logging.getLogger("bear").warning("POST_CALL_WEBHOOK_SECRET is unset; post-call summaries are disabled")
+    warn_if_prod_log_only(settings.alerts_mode, settings.env)
 
     if not re.fullmatch(SHOP_ID_PATTERN, settings.shop_id):
         raise RuntimeError("invalid SHOP_ID")
@@ -761,11 +768,22 @@ def create_app() -> FastAPI:
                 "message": problem,
                 "alternatives": next_slots(shop, max(dt, datetime.now(shop.tz))),
             }
+        when = dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " ")
+        log_staff_alert(
+            settings.alerts_mode,
+            settings.env,
+            "booking",
+            name=req.customer_name,
+            phone=req.phone,
+            vehicle=req.vehicle,
+            service=req.service,
+            when=when,
+        )
         return {
             "ok": True,
             "booked": True,
             "confirmation": appt["public_id"],
-            "when": dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " "),
+            "when": when,
             "message": (
                 f"You're all set. I've booked the {req.vehicle} for {req.service}. "
                 "Just bring the keys to the front desk when you come in."
@@ -825,6 +843,15 @@ def create_app() -> FastAPI:
         fields = req.model_dump(exclude={"shop_id"})
         fields["destination"] = req.destination or shop.name
         tow = store.create_tow(shop.shop_id, **fields, status="dispatch_requested")
+        log_staff_alert(
+            settings.alerts_mode,
+            settings.env,
+            "tow",
+            name=req.customer_name,
+            phone=req.phone,
+            pickup_location=fields["pickup_location"],
+            issue=req.issue,
+        )
         if shop.features.tow_dispatch:
             msg = (
                 "I've gone ahead and logged the tow. A dispatcher will call you back "
@@ -849,6 +876,15 @@ def create_app() -> FastAPI:
                 return UNKNOWN_SHOP
             shop_id, staffed = shop.shop_id, shop.callback_languages
         m = store.create_message(shop_id, **req.model_dump(exclude={"shop_id"}))
+        log_staff_alert(
+            settings.alerts_mode,
+            settings.env,
+            "message",
+            name=req.caller_name,
+            phone=req.phone,
+            urgency=req.urgency,
+            reason=req.reason,
+        )
         language = req.callback_language
         if language == "en":
             lang = ""
