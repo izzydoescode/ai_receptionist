@@ -1,0 +1,64 @@
+# Demo shop. Every detail here is made up: Vice City Auto is not a real
+# business, the numbers are fictional 555-01XX numbers, and the voice ids
+# are placeholders to replace with ElevenLabs voice ids.
+# Times must be quoted "HH:MM" (unquoted 18:00 is an integer in YAML).
+shop_id: vice-city-auto
+name: Vice City Auto
+city: Miami
+address: 555 Vice Boulevard, Miami, FL 33139
+timezone: America/New_York
+
+twilio_number: "+13055550100"
+transfer_number: "+13055550142"
+
+hours:
+  monday: [{open: "08:00", close: "18:00"}]
+  tuesday: [{open: "08:00", close: "18:00"}]
+  wednesday: [{open: "08:00", close: "18:00"}]
+  thursday: [{open: "08:00", close: "18:00"}]
+  friday: [{open: "08:00", close: "18:00"}]
+  saturday: [{open: "09:00", close: "14:00"}]
+  sunday: []
+
+holidays:
+  - 2026-11-26
+  - 2026-12-25
+  - 2027-01-01
+
+bays_per_slot: 2
+slot_minutes: 60
+
+services:
+  - general repair
+  - diagnostics and check engine light
+  - brakes
+  - A/C
+  - tires
+  - oil changes
+  - collision and body work
+  - paint
+  - insurance claims
+  - towing coordination
+
+languages: [en, es, fr]
+# Kreyol callers: "french" switches to French; "message" only takes a message.
+ht_fallback: french
+
+voices:
+  en: PLACEHOLDER_VOICE_EN
+  es: PLACEHOLDER_VOICE_ES
+  fr: PLACEHOLDER_VOICE_FR
+
+first_messages:
+  en: "Vice City Auto, this is Bear, the shop's virtual assistant. Calls may be recorded. Para español, solo hable en español. What can I do for you?"
+  es: "Gracias por llamar a Vice City Auto. Le habla Bear, el asistente virtual del taller. La llamada puede ser grabada. ¿En qué le puedo ayudar?"
+  fr: "Bonjour, vous êtes bien chez Vice City Auto. Je suis Bear, l'assistant virtuel. Cet appel peut être enregistré. Comment puis-je vous aider ?"
+
+features:
+  sms_confirmations: false
+  tow_dispatch: false
+  photo_texting: false
+
+persona:
+  name: Bear
+  style: warm, direct, a little gruff seasoned shop guy
