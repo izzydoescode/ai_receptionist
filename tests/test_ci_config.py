@@ -32,7 +32,7 @@ def test_workflow_contract(name):
     assert triggers["pull_request"] in (None, {}, {"branches": ["**"]})
     assert config["permissions"] == {"contents": "read"}
     assert config["concurrency"] == {
-        "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+        "group": "${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}",
         "cancel-in-progress": True,
     }
     if name == "security":
