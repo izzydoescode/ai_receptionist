@@ -101,6 +101,27 @@ def test_international_numbers_need_plus_and_valid_length(client, tool_headers, 
     reject(client, tool_headers, payloads, tool, "phone", phone)
 
 
+
+@pytest.mark.parametrize("tool", WRITE_TOOLS)
+@pytest.mark.parametrize(
+    "phone",
+    [
+        "+509-3412-3456 ext 4",
+        "+509-3412-3456 ext. 4",
+        "+509-3412-3456 x4",
+        "+509-3412-3456#4",
+        "+509-3412-3456 extension 4",
+        "305-555-0199 EXT 4",
+        "(305) 555-0199 Ext. 12",
+        "305-555-0199 x 12",
+        "3055550199#4",
+        "13055550199 Extension 4",
+    ],
+)
+def test_phone_extensions_are_rejected(client, tool_headers, payloads, tool, phone):
+    reject(client, tool_headers, payloads, tool, "phone", phone, "without the extension")
+
+
 @pytest.mark.parametrize("field,limit", [("phone", 32), ("ro_number", 20), ("last_name", 80)])
 def test_repair_factor_max_length(client, tool_headers, payloads, field, limit):
     reject(client, tool_headers, payloads, "check_repair_status", field, "x" * (limit + 1))

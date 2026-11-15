@@ -145,9 +145,17 @@ def is_nanp(digits):
     return bool(re.fullmatch(r"[2-9]\d{2}[2-9]\d{6}", digits))
 
 
+# ext, ext., x, #, or "extension", so "…3456 ext 4" is not stored as …34564.
+PHONE_EXTENSION = re.compile(r"(?i)(?:\bextension\b|\bext\.|\bext\b|\bx\b|x\s*\d|#)")
+
+
 def normalize_phone(value):
     value = integer_to_string(value)
-    if not isinstance(value, str) or len(value) > 32:
+    if not isinstance(value, str):
+        raise ValueError("invalid phone")
+    if PHONE_EXTENSION.search(value):
+        raise ValueError("phone extension")
+    if len(value) > 32:
         raise ValueError("invalid phone")
     plus = value.strip().startswith("+")
     digits = re.sub(r"\D", "", value)
@@ -239,6 +247,9 @@ def validation_message(field, error):
     if error["type"] == "string_too_long":
         limit = error["ctx"]["max_length"]
         return f"{label} is too long; keep it under {limit} characters."
+    detail = f"{error.get('msg', '')} {(error.get('ctx') or {}).get('error', '')}".lower()
+    if field == "phone" and "extension" in detail:
+        return "I need the phone number without the extension."
     return hints.get(field, f"{label} is required.")
 
 
