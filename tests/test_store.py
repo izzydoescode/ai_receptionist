@@ -316,3 +316,32 @@ def test_call_summary_optional_fields_may_be_missing(store):
 def test_call_summary_unrelated_integrity_error_is_not_swallowed(store):
     with pytest.raises(IntegrityError):
         store.save_call_summary(SHOP, **{**CALL, "outcome": None})
+
+
+def test_write_clears_sqlite_begin_on_pooled_connections(store, engine):
+    store.create_message(SHOP, **MESSAGE)
+    connections = [engine.connect() for _ in range(engine.pool.size())]
+    try:
+        assert all("sqlite_begin" not in conn.info for conn in connections)
+    finally:
+        for conn in connections:
+            conn.close()
+
+
+def test_reads_after_a_write_do_not_block_each_other(store, engine):
+    import time
+
+    from sqlalchemy import text
+
+    n = engine.pool.size()
+    with ThreadPoolExecutor(max_workers=n) as pool:
+        list(pool.map(lambda _: store.create_message(SHOP, **MESSAGE), range(n)))
+    holder = engine.connect()
+    try:
+        with holder.begin():
+            holder.execute(text("SELECT 1"))
+            started = time.perf_counter()
+            store.board(SHOP)
+            assert time.perf_counter() - started < 1
+    finally:
+        holder.close()
