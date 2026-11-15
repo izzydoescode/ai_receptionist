@@ -70,7 +70,7 @@ On real calls the webhook overrides the first message with the shop's `first_mes
 | **fr** (Creole fallback) | `Bonjour, vous êtes bien chez {{shop_name}}. Je suis {{persona_name}}, l'assistant virtuel. L'appel peut être enregistré. Comment puis-je vous aider ?` |
 | **ht** (pre-recorded / external TTS only, see README "Haitian Creole") | `Bonjou, ou rele {{shop_name}}. Mwen se {{persona_name}}, asistan vityèl garaj la. Apèl la ka anrejistre. Kijan mwen ka ede w jodi a?` |
 
-> Have a native Kreyòl speaker proofread the `ht` lines before using them with real customers. Get the shop owner's OK before using any real shop name.
+> Have native speakers sign off every ES, FR and HT line in `docs/TRANSLATION_REVIEW.md` before using them with real customers. Get the shop owner's OK before using any real shop name.
 
 ## Dynamic variables
 Set by the call-start webhook on every inbound call: `shop_id`, `shop_name`, `shop_city`, `shop_address`, `hours_text`, `services_text`, `persona_name`, `features_text`, `shop_timezone`, `languages_text`, `call_start_local`. For Preview, add placeholders with the demo shop's values from `shops/vice-city-auto.yaml`.
