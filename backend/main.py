@@ -35,6 +35,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, BeforeValidator, Field, ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from bear.db import check_schema, make_engine
 from bear.initiation import InitRequest, shop_initiation, unknown_initiation
@@ -719,7 +720,7 @@ def create_app() -> FastAPI:
         shop_id = call.shop_id if call.shop_id in shops else UNKNOWN_SHOP_ID
         request.state.bear_shop_id = shop_id
         request.state.bear_conversation_id = call.fields["conversation_id"]
-        saved = store.save_call_summary(shop_id, **call.fields)
+        saved = await run_in_threadpool(store.save_call_summary, shop_id, **call.fields)
         return {"status": "stored" if saved else "duplicate"}
 
     @app.post("/tools/book_appointment", dependencies=[Depends(check_secret)])

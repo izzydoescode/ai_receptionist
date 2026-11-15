@@ -171,9 +171,10 @@ class Store:
         now = (created_at or datetime.now(UTC)).astimezone(UTC)
         with self._write() as conn:
             for _ in range(5):
+                public_id = "C" + secrets.token_hex(3).upper()
                 statement = (
                     upsert(call_summaries)
-                    .values(shop_id=shop_id, public_id="C" + secrets.token_hex(3).upper(), created_at=now, **fields)
+                    .values(shop_id=shop_id, public_id=public_id, created_at=now, **fields)
                     .on_conflict_do_nothing(index_elements=["conversation_id"])
                     .returning(call_summaries)
                 )
@@ -181,7 +182,10 @@ class Store:
                     with conn.begin_nested():
                         row = conn.execute(statement).mappings().one_or_none()
                 except IntegrityError:
-                    continue  # public_id collision; try another
+                    # A public_id collision should retry; any other constraint must surface.
+                    if conn.scalar(select(call_summaries.c.id).where(call_summaries.c.public_id == public_id)) is None:
+                        raise
+                    continue
                 if row is None:
                     return None
                 row = dict(row)

@@ -7,6 +7,7 @@ from threading import Barrier
 from zoneinfo import ZoneInfo
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 SHOP = "vice-city-auto"
 SLOT = datetime(2026, 11, 16, 10, tzinfo=ZoneInfo("America/New_York"))
@@ -311,3 +312,9 @@ def test_call_summary_optional_fields_may_be_missing(store):
         SHOP, **{**CALL, "started_at": None, "duration_secs": None, "title": None, "language": None}
     )
     assert row["started_at"] is None and row["duration_secs"] is None
+
+
+
+def test_call_summary_unrelated_integrity_error_is_not_swallowed(store):
+    with pytest.raises(IntegrityError):
+        store.save_call_summary(SHOP, **{**CALL, "outcome": None})

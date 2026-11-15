@@ -5,7 +5,9 @@ import hashlib
 import hmac
 import json
 import logging
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -239,3 +241,31 @@ def test_logs_carry_ids_but_never_the_summary(post_client, caplog):
     assert '"shop_id":"vice-city-auto"' in text
     assert "squeaking" not in text
     assert "3055550199" not in text
+
+
+
+def test_health_answers_while_a_post_call_save_waits_on_the_write_lock(post_client):
+    started = threading.Event()
+    release = threading.Event()
+    engine = post_client.app.state.store.engine
+
+    def hold_lock():
+        with engine.connect() as conn:
+            conn.info["sqlite_begin"] = "IMMEDIATE"
+            with conn.begin():
+                started.set()
+                assert release.wait(timeout=3)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        locker = pool.submit(hold_lock)
+        assert started.wait(timeout=2)
+        future = pool.submit(post, post_client, fixture("post_call_transcription"))
+        time.sleep(0.05)
+        start = time.monotonic()
+        assert post_client.get("/health").status_code == 200
+        assert time.monotonic() - start < 0.5
+        release.set()
+        response = future.result(timeout=5)
+        locker.result(timeout=2)
+    assert response.status_code == 200
+    assert response.json() == {"status": "stored"}
