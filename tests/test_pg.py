@@ -6,7 +6,7 @@ from datetime import timedelta
 import pytest
 
 from test_migrations import assert_metadata_matches, migration_config
-from test_store import APPOINTMENT, MESSAGE, SHOP, SLOT, assert_concurrent_booking, audit_rows
+from test_store import APPOINTMENT, CALL, MESSAGE, SHOP, SLOT, assert_concurrent_booking, audit_rows
 
 pytestmark = pytest.mark.pg
 URL = os.environ.get("BEAR_TEST_PG_URL")
@@ -79,3 +79,9 @@ def test_pg_write_guard_rollback(pg_store, pg_engine):
         Store(pg_engine, write_guard=guard).create_message(SHOP, **MESSAGE)
     assert pg_store.board(SHOP)["messages"] == []
     assert audit_rows(pg_engine) == before
+
+
+def test_pg_call_summary_is_saved_once(pg_store):
+    first = pg_store.save_call_summary(SHOP, **{**CALL, "conversation_id": "conv_pg_once"})
+    assert first is not None
+    assert pg_store.save_call_summary(SHOP, **{**CALL, "conversation_id": "conv_pg_once"}) is None

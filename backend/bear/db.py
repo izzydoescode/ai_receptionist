@@ -105,6 +105,20 @@ audit_events = Table(
     Column("entity_public_id", String(7)),
     Column("outcome", String(32)),
 )
+# One row per finished call, from the ElevenLabs post-call webhook. Transcripts and audio are never
+# stored here; the summary is ElevenLabs' short analysis of the call.
+call_summaries = Table(
+    "call_summaries",
+    metadata,
+    *common_columns(),
+    Column("conversation_id", String(64), nullable=False, unique=True),
+    Column("started_at", UTCDateTime()),
+    Column("duration_secs", Integer),
+    Column("outcome", String(16), nullable=False),
+    Column("summary", Text, nullable=False),
+    Column("title", Text),
+    Column("language", String(8)),
+)
 REQUIRED_TABLES = frozenset(metadata.tables)
 
 

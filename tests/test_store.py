@@ -47,7 +47,16 @@ REPAIR = dict(
     eta="Tomorrow",
     balance_estimate="$10",
 )
-TABLES = {"appointments", "repair_orders", "tows", "messages", "audit_events"}
+CALL = dict(
+    conversation_id="conv_demo0001",
+    started_at=SLOT,
+    duration_secs=95,
+    outcome="success",
+    summary="Private summary",
+    title="Brake booking",
+    language="en",
+)
+TABLES = {"appointments", "repair_orders", "tows", "messages", "audit_events", "call_summaries"}
 
 
 @pytest.fixture
@@ -87,6 +96,7 @@ def test_schema_contract(engine):
         "tows": set(TOW),
         "messages": set(MESSAGE),
         "audit_events": {"event", "entity_public_id", "outcome"},
+        "call_summaries": set(CALL),
     }
     for table in TABLES:
         columns = {c["name"]: c for c in inspector.get_columns(table)}
@@ -99,6 +109,7 @@ def test_schema_contract(engine):
         assert any(i["column_names"] == ["shop_id"] for i in inspector.get_indexes(table))
         assert any(u["column_names"] == ["public_id"] for u in inspector.get_unique_constraints(table))
     assert any(u["column_names"] == ["shop_id", "ro_number"] for u in inspector.get_unique_constraints("repair_orders"))
+    assert any(u["column_names"] == ["conversation_id"] for u in inspector.get_unique_constraints("call_summaries"))
     assert any(
         u["name"] == "uq_appointments_shop_slot_bay" and u["column_names"] == ["shop_id", "slot_start", "bay"]
         for u in inspector.get_unique_constraints("appointments")
@@ -170,6 +181,7 @@ def test_board_limits_order_and_shop_isolation(store):
             store.create_tow(shop, **{**TOW, "issue": f"{shop}-{i}"})
             store.book_appointment(shop, SLOT + timedelta(hours=i), 2, **APPOINTMENT)
             store.upsert_repair_order(shop, **{**REPAIR, "ro_number": str(i)})
+            store.save_call_summary(shop, **{**CALL, "conversation_id": f"conv_{shop}_{i}"})
     board = store.board(SHOP, 2)
     assert set(board) == TABLES - {"audit_events"}
     for table, rows in board.items():
@@ -188,6 +200,7 @@ def test_reset_shop_isolated(store, engine):
         store.create_tow(shop, **TOW)
         store.book_appointment(shop, SLOT, 2, **APPOINTMENT)
         store.upsert_repair_order(shop, **REPAIR)
+        store.save_call_summary(shop, **{**CALL, "conversation_id": f"conv_{shop}"})
     before = store.board("other")
     store.reset_shop(SHOP)
     assert all(not rows for rows in store.board(SHOP).values())
@@ -268,3 +281,22 @@ def test_public_id_collision_retries_with_new_id(store, engine, monkeypatch, ope
     if operation == "book":
         assert second["bay"] == 2
     assert len({row["public_id"] for row in audit_rows(engine)}) == len(audit_rows(engine))
+
+
+def test_call_summary_is_saved_once_per_conversation(store, engine):
+    first = store.save_call_summary(SHOP, **CALL)
+    assert re.fullmatch(r"C[0-9A-F]{6}", first["public_id"])
+    assert first["started_at"] == SLOT.astimezone(UTC)
+    # ElevenLabs retries deliveries; a repeat of the same conversation is ignored.
+    assert store.save_call_summary(SHOP, **{**CALL, "summary": "changed"}) is None
+    rows = store.board(SHOP)["call_summaries"]
+    assert [row["summary"] for row in rows] == ["Private summary"]
+    events = [row for row in audit_rows(engine) if row["event"] == "call.summarized"]
+    assert [row["entity_public_id"] for row in events] == [first["public_id"]]
+
+
+def test_call_summary_optional_fields_may_be_missing(store):
+    row = store.save_call_summary(
+        SHOP, **{**CALL, "started_at": None, "duration_secs": None, "title": None, "language": None}
+    )
+    assert row["started_at"] is None and row["duration_secs"] is None

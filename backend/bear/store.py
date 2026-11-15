@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, func, insert, select
 from sqlalchemy.exc import IntegrityError
 
-from bear.db import appointments, audit_events, messages, metadata, repair_orders, tows
+from bear.db import appointments, audit_events, call_summaries, messages, metadata, repair_orders, tows
 
 
 class SlotFull(Exception):
@@ -152,6 +152,33 @@ class Store:
             )
             return dict(conn.execute(statement).mappings().one())
 
+    def save_call_summary(self, shop_id, *, created_at=None, **fields):
+        """Store one finished call. Returns None when the conversation was already saved (a webhook retry)."""
+        if self.engine.dialect.name == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert as upsert
+        else:
+            from sqlalchemy.dialects.postgresql import insert as upsert
+        now = (created_at or datetime.now(UTC)).astimezone(UTC)
+        with self._write() as conn:
+            for _ in range(5):
+                statement = (
+                    upsert(call_summaries)
+                    .values(shop_id=shop_id, public_id="C" + secrets.token_hex(3).upper(), created_at=now, **fields)
+                    .on_conflict_do_nothing(index_elements=["conversation_id"])
+                    .returning(call_summaries)
+                )
+                try:
+                    with conn.begin_nested():
+                        row = conn.execute(statement).mappings().one_or_none()
+                except IntegrityError:
+                    continue  # public_id collision; try another
+                if row is None:
+                    return None
+                row = dict(row)
+                self._audit(conn, shop_id, "call.summarized", row["public_id"], created_at=created_at)
+                return row
+            raise RuntimeError("could not allocate a public id")
+
     def record_audit(self, shop_id, event, entity_public_id=None, outcome=None, *, created_at=None):
         with self._write() as conn:
             return self._audit(conn, shop_id, event, entity_public_id, outcome, created_at)
@@ -166,7 +193,8 @@ class Store:
 
     def board(self, shop_id, limit=50):
         return {
-            table.name: self._list(table, shop_id, limit) for table in (appointments, tows, messages, repair_orders)
+            table.name: self._list(table, shop_id, limit)
+            for table in (appointments, tows, messages, repair_orders, call_summaries)
         }
 
     def reset_shop(self, shop_id):
