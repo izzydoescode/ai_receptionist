@@ -295,7 +295,8 @@ class RequestLoggingMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
-            return await self.app(scope, receive, send)
+            await self.app(scope, receive, send)
+            return
         start = time.monotonic()
         path, method = scope["path"], scope["method"]
         is_tool = method == "POST" and path.startswith("/tools/")
@@ -378,7 +379,8 @@ class RequestLoggingMiddleware:
                 try:
                     result = json.loads(body)
                 except ValueError:
-                    pass
+                    # Invalid JSON leaves logging metadata at its default values.
+                    result = {}
             entry.update(
                 ts=datetime.now(UTC).isoformat(),
                 level="info",
@@ -421,7 +423,8 @@ class ToolTransportMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or scope["method"] != "POST" or not scope["path"].startswith("/tools/"):
-            return await self.app(scope, receive, send)
+            await self.app(scope, receive, send)
+            return
         # Transport checks run before FastAPI parses the body or checks the tool secret.
         headers = dict(scope["headers"])
 
@@ -430,13 +433,15 @@ class ToolTransportMiddleware:
 
         content_type = headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
         if content_type != b"application/json":
-            return await reject(415, "Content-Type must be application/json")
+            await reject(415, "Content-Type must be application/json")
+            return
         try:
             length = int(headers.get(b"content-length", b"0"))
         except ValueError:
             length = 0
         if length > 16384:
-            return await reject(413, "request body too large")
+            await reject(413, "request body too large")
+            return
         body = bytearray()
         while True:
             message = await receive()
@@ -444,15 +449,18 @@ class ToolTransportMiddleware:
                 return
             body.extend(message.get("body", b""))
             if len(body) > 16384:
-                return await reject(413, "request body too large")
+                await reject(413, "request body too large")
+                return
             if not message.get("more_body", False):
                 break
         try:
             parsed = json.loads(body)
         except (ValueError, UnicodeDecodeError):
-            return await reject(400, "invalid JSON body")
+            await reject(400, "invalid JSON body")
+            return
         if not isinstance(parsed, dict):
-            return await reject(400, "invalid JSON body")
+            await reject(400, "invalid JSON body")
+            return
 
         scope.setdefault("state", {})["bear_body"] = parsed
 

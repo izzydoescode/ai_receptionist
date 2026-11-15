@@ -271,5 +271,6 @@ def test_request_json_written_to_stdout(tmp_path):
         try:
             entries.append(json.loads(line))
         except ValueError:
-            pass
+            # Non-JSON lines (uvicorn/other output) are ignored.
+            continue
     assert any(isinstance(e, dict) and e.get("event") == "request" and e.get("path") == "/health" for e in entries)
