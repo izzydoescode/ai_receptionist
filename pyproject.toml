@@ -22,7 +22,7 @@ extend-exclude = [".venv"]
 select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["main", "make_tools", "create_tools_via_api", "conftest", "test_logging"]
+known-first-party = ["bear", "main", "make_tools", "create_tools_via_api", "conftest", "test_logging"]
 
 [tool.ruff.format]
 quote-style = "double"
