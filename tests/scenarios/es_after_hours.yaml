@@ -1,0 +1,30 @@
+name: es_after_hours
+language: es
+description: >-
+  Spanish caller after hours asks for Sunday. The shop is closed Sundays, so they get the next open
+  slots. The caller then prefers a callback and leaves a message in Spanish.
+calls:
+  - tool: book_appointment
+    args:
+      customer_name: Lucía Fernández
+      phone: "3055550149"
+      vehicle: 2019 Hyundai Elantra
+      service: revisión del aire acondicionado
+      preferred_date: "{next_sunday}"
+      preferred_time: "10:00"
+      language: es
+    expect: {ok: true, booked: false, message: We're closed Sundays.}
+    expect_length: {alternatives: 3}
+  - tool: take_message
+    args:
+      caller_name: Lucía Fernández
+      phone: "3055550149"
+      reason: Quiere una cita para revisar el aire acondicionado; prefiere que la llamen el lunes
+      callback_language: es
+    expect: {ok: true, saved: true}
+    expect_contains: {message: Alguien que habla español le llamará.}
+db_counts: {appointments: 0}
+db:
+  messages:
+    - {caller_name: Lucía Fernández, callback_language: es}
+admin_contains: [Lucía Fernández, aire acondicionado]

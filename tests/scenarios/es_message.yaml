@@ -1,0 +1,16 @@
+name: es_message
+language: es
+description: Spanish caller leaves a message. The demo shop lists Spanish in callback_languages, so a Spanish callback is promised.
+calls:
+  - tool: take_message
+    args:
+      caller_name: Rosa Delgado
+      phone: "3055550151"
+      reason: Pregunta si tienen llantas para una Honda CR-V 2017
+      callback_language: es
+    expect: {ok: true, saved: true}
+    expect_contains: {message: Alguien que habla español le llamará.}
+db:
+  messages:
+    - {caller_name: Rosa Delgado, callback_language: es, reason: Pregunta si tienen llantas para una Honda CR-V 2017}
+admin_contains: [Rosa Delgado, llantas]

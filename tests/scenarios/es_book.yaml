@@ -1,0 +1,22 @@
+name: es_book
+language: es
+description: '"Necesito cambiar los frenos de mi Altima el lunes a las nueve." Booked in Spanish, with language es saved.'
+calls:
+  - tool: book_appointment
+    args:
+      customer_name: José Martínez
+      phone: "786-555-0148"
+      vehicle: 2014 Nissan Altima
+      service: cambio de frenos delanteros
+      preferred_date: "{next_monday}"
+      preferred_time: "09:00"
+      language: es
+      notes: El cliente prefiere que le llamen por la tarde
+    expect: {ok: true, booked: true}
+db_counts: {appointments: 1}
+db:
+  appointments:
+    - {customer_name: José Martínez, service: cambio de frenos delanteros, language: es}
+audit:
+  - {event: appointment.booked}
+admin_contains: [José Martínez, cambio de frenos delanteros]

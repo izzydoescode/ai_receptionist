@@ -100,3 +100,18 @@ def test_scenario(make_client, path):
     check_admin(client, scenario)
     elapsed = time.perf_counter() - started
     assert elapsed < BUDGET_SECONDS, f"{path.stem} took {elapsed:.2f}s"
+
+
+WRITE_TOOLS = {"book_appointment", "request_tow", "take_message"}
+
+
+@pytest.mark.parametrize("path", sorted(SCENARIOS.glob("es_*.yaml")), ids=lambda path: path.stem)
+def test_spanish_scenarios_persist_language_es(path):
+    scenario = load(path)
+    assert scenario["language"] == "es"
+    writes = [step for step in scenario["calls"] if step["tool"] in WRITE_TOOLS]
+    for step in writes:
+        assert "es" in (step["args"].get("language"), step["args"].get("callback_language")), step["tool"]
+    if writes:
+        saved = [row for rows in scenario.get("db", {}).values() for row in rows]
+        assert saved and all("es" in (row.get("language"), row.get("callback_language")) for row in saved)

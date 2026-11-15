@@ -1,0 +1,20 @@
+name: es_tow_safe
+language: es
+description: Spanish caller who is safe in a parking lot. The tow is logged with language es and no dispatch-time promise.
+calls:
+  - tool: request_tow
+    args:
+      customer_name: Miguel Ángel Torres
+      phone: "3055550150"
+      vehicle: 2013 Toyota Sienna, gris
+      pickup_location: Estacionamiento del supermercado en la calle 8 y la avenida 27
+      issue: La batería está muerta y el carro no arranca
+      is_safe: true
+      language: es
+    expect: {ok: true, logged: true}
+    expect_contains: {message: the shop will call you back as soon as possible}
+    expect_not_in_response: [15 minutes, Caller may be unsafe]
+db:
+  tows:
+    - {customer_name: Miguel Ángel Torres, is_safe: true, language: es, issue: La batería está muerta y el carro no arranca}
+admin_contains: [Miguel Ángel Torres]
