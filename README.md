@@ -116,5 +116,18 @@ python -m pytest                                   # whole suite (config in pypr
 python -m pytest --cov --cov-report=term-missing   # with coverage for backend/ and tools/
 ```
 
+Lint and format (same pinned ruff as CI): `ruff check . && ruff format --check .`
+
+### CI (GitHub Actions)
+On every push and pull request:
+- **tests**: pytest on Python 3.11 and 3.13 with `--cov-fail-under=80`; `coverage.xml` is uploaded as an artifact.
+- **quality**: `ruff check` and `ruff format --check`.
+- **security**:
+  - CodeQL (security-and-quality queries; the SARIF file is kept as an artifact and summarized, and any error-level finding fails the job);
+  - `pip-audit --strict` on the requirements;
+  - gitleaks over the full git history.
+
+Security also runs weekly. Dependabot opens weekly grouped updates for pip and the pinned actions. Because the repo is private, CodeQL results are not uploaded to the Security tab by default. Set the repo variable `CODE_SCANNING_UPLOAD=true` once code scanning is available.
+
 The tests use only dummy secrets and temp data files. They never call the network or write into `tools/`.
 Compliance note for real deployment: Florida requires all-party consent to record calls (Fla. Stat. 934.03), which is why the greeting says "calls may be recorded." Bear also tells callers it's an AI.
