@@ -38,7 +38,7 @@ from pydantic import BaseModel, BeforeValidator, Field
 
 from bear.db import check_schema, make_engine
 from bear.seed import DEMO_REPAIR_ORDERS
-from bear.shops import load_shops
+from bear.shops import SHOP_ID_PATTERN, ShopConfig, load_shops
 from bear.store import SlotFull, Store
 
 DEFAULT_SHOPS_DIR = Path(__file__).resolve().parent.parent / "shops"
@@ -83,6 +83,12 @@ STATUS_TEXT = {
     "diagnosing": "being diagnosed",
 }
 
+
+UNKNOWN_SHOP = {
+    "ok": False,
+    "error": "unknown_shop",
+    "message": "Sorry, this line isn't set up in our system yet. Ask the caller to call back later.",
+}
 
 REPAIR_STATUS_NEEDS = {
     "ok": True,
@@ -146,7 +152,12 @@ Language = Annotated[Literal["en", "es", "fr", "ht"], BeforeValidator(lowercase)
 Urgency = Annotated[Literal["low", "normal", "high"], BeforeValidator(lowercase)]
 
 
-class BookAppointment(BaseModel):
+class ToolRequest(BaseModel):
+    # Set by the agent's tool config (a dynamic variable), never by the LLM; omitted means SHOP_ID.
+    shop_id: str | None = Field(default=None, pattern=SHOP_ID_PATTERN)
+
+
+class BookAppointment(ToolRequest):
     customer_name: Name
     phone: Phone
     vehicle: Name = Field(description="year make model")
@@ -157,13 +168,13 @@ class BookAppointment(BaseModel):
     notes: OptionalText | None = None
 
 
-class RepairStatus(BaseModel):
+class RepairStatus(ToolRequest):
     phone: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=32)
     ro_number: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=20)
     last_name: str | None = Field(default=None, max_length=80)
 
 
-class TowRequest(BaseModel):
+class TowRequest(ToolRequest):
     customer_name: Name
     phone: Phone
     vehicle: Name
@@ -174,7 +185,7 @@ class TowRequest(BaseModel):
     language: Language = "en"
 
 
-class TakeMessage(BaseModel):
+class TakeMessage(ToolRequest):
     caller_name: Name
     phone: Phone
     reason: Text
@@ -196,6 +207,7 @@ def validation_message(field, error):
         "callback_language": "Language must be en, es, fr or ht.",
         "urgency": "Urgency must be low, normal or high.",
         "is_safe": "I need to know if the caller is safe: true or false.",
+        "shop_id": "The shop id is not valid; check the tool configuration.",
     }
     label = field.replace("_", " ").capitalize()
     if error["type"] == "string_too_long":
@@ -495,17 +507,20 @@ def create_app() -> FastAPI:
         return re.sub(r"\D", "", s or "")[-10:]
 
     # ---------- helpers ----------
-    def slot_problem(dt: datetime) -> str | None:
-        reason = default_shop.closed_reason(dt)
-        if reason is None and dt < datetime.now(default_shop.tz):
+    def resolve_shop(shop_id: str | None) -> ShopConfig | None:
+        return shops.get(settings.shop_id if shop_id is None else shop_id)
+
+    def slot_problem(shop: ShopConfig, dt: datetime) -> str | None:
+        reason = shop.closed_reason(dt)
+        if reason is None and dt < datetime.now(shop.tz):
             return "That time already passed."
         return reason
 
-    def next_slots(start: datetime, n: int = 3) -> list[str]:
+    def next_slots(shop: ShopConfig, start: datetime, n: int = 3) -> list[str]:
         out = []
-        counts = store.booked_counts(settings.shop_id, start, start + timedelta(days=15))
-        for t in default_shop.upcoming_slots(start, days=14):
-            if counts.get(t.astimezone(UTC), 0) < default_shop.bays_per_slot:
+        counts = store.booked_counts(shop.shop_id, start, start + timedelta(days=15))
+        for t in shop.upcoming_slots(start, days=14):
+            if counts.get(t.astimezone(UTC), 0) < shop.bays_per_slot:
                 out.append(t.strftime("%A %b %d at %I:%M %p").replace(" 0", " "))
                 if len(out) == n:
                     break
@@ -518,18 +533,17 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/book_appointment", dependencies=[Depends(check_secret)])
     def book_appointment(req: BookAppointment):
-        if date.fromisoformat(req.preferred_date) > datetime.now(default_shop.tz).date() + timedelta(days=60):
+        shop = resolve_shop(req.shop_id)
+        if shop is None:
+            return UNKNOWN_SHOP
+        if date.fromisoformat(req.preferred_date) > datetime.now(shop.tz).date() + timedelta(days=60):
             return invalid_input("preferred_date", "I can only book up to 60 days out.")
-        dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(
-            tzinfo=default_shop.tz
-        )
-        problem = slot_problem(dt)
+        dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(tzinfo=shop.tz)
+        problem = slot_problem(shop, dt)
         if problem is None:
-            fields = req.model_dump(exclude={"preferred_date", "preferred_time"})
+            fields = req.model_dump(exclude={"preferred_date", "preferred_time", "shop_id"})
             try:
-                appt = store.book_appointment(
-                    settings.shop_id, default_shop.slot_start(dt), default_shop.bays_per_slot, **fields
-                )
+                appt = store.book_appointment(shop.shop_id, shop.slot_start(dt), shop.bays_per_slot, **fields)
             except SlotFull:
                 problem = "That slot is full."
         if problem:
@@ -537,7 +551,7 @@ def create_app() -> FastAPI:
                 "ok": True,
                 "booked": False,
                 "message": problem,
-                "alternatives": next_slots(max(dt, datetime.now(default_shop.tz))),
+                "alternatives": next_slots(shop, max(dt, datetime.now(shop.tz))),
             }
         return {
             "ok": True,
@@ -549,17 +563,20 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/check_repair_status", dependencies=[Depends(check_secret)])
     def check_repair_status(req: RepairStatus):
+        shop = resolve_shop(req.shop_id)
+        if shop is None:
+            return UNKNOWN_SHOP
         last_name = (req.last_name or "").strip()
         phone = (req.phone or "").strip()
         ro = (req.ro_number or "").strip()
         if not last_name or not (phone or ro):
-            store.record_audit(settings.shop_id, "repair_status.lookup", outcome="needs_info")
+            store.record_audit(shop.shop_id, "repair_status.lookup", outcome="needs_info")
             return REPAIR_STATUS_NEEDS
 
         names = {normalize_name(last_name), normalize_name(last_name.split()[-1])}
         phone_digits = re.sub(r"\D", "", phone)
         hits = []
-        for record in store.list_repair_orders(settings.shop_id):
+        for record in store.list_repair_orders(shop.shop_id):
             customer_tokens = record["customer_name"].split()
             if not customer_tokens or normalize_name(customer_tokens[-1]) not in names:
                 continue
@@ -569,10 +586,10 @@ def create_app() -> FastAPI:
                 continue
             hits.append(record)
         if len(hits) != 1:
-            store.record_audit(settings.shop_id, "repair_status.lookup", outcome="failed")
+            store.record_audit(shop.shop_id, "repair_status.lookup", outcome="failed")
             return REPAIR_STATUS_FAILURE
         r = hits[0]
-        store.record_audit(settings.shop_id, "repair_status.lookup", r["public_id"], outcome="verified")
+        store.record_audit(shop.shop_id, "repair_status.lookup", r["public_id"], outcome="verified")
         return {
             "ok": True,
             "found": True,
@@ -587,9 +604,12 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/request_tow", dependencies=[Depends(check_secret)])
     def request_tow(req: TowRequest):
-        fields = req.model_dump()
-        fields["destination"] = req.destination or default_shop.name
-        tow = store.create_tow(settings.shop_id, **fields, status="dispatch_requested")
+        shop = resolve_shop(req.shop_id)
+        if shop is None:
+            return UNKNOWN_SHOP
+        fields = req.model_dump(exclude={"shop_id"})
+        fields["destination"] = req.destination or shop.name
+        tow = store.create_tow(shop.shop_id, **fields, status="dispatch_requested")
         msg = "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
         if not req.is_safe:
             msg = "Caller may be unsafe: tell them to call 911 now if anyone is hurt or they're in traffic. " + msg
@@ -597,7 +617,10 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/take_message", dependencies=[Depends(check_secret)])
     def take_message(req: TakeMessage):
-        m = store.create_message(settings.shop_id, **req.model_dump(exclude={"vehicle"}))
+        shop = resolve_shop(req.shop_id)
+        if shop is None:
+            return UNKNOWN_SHOP
+        m = store.create_message(shop.shop_id, **req.model_dump(exclude={"vehicle", "shop_id"}))
         lang = {
             "ht": " A Creole-speaking team member will call back.",
             "es": " Alguien que habla español le llamará.",
