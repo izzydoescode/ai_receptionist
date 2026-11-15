@@ -21,6 +21,11 @@ WEST = {
 }
 
 
+def assert_recent_local(text, zone):
+    started = datetime.strptime(text, "%A, %B %d, %Y, %I:%M %p").replace(tzinfo=ZoneInfo(zone))
+    assert abs((datetime.now(ZoneInfo(zone)) - started).total_seconds()) < 120
+
+
 def body(called_number="+13055550110", **extra):
     return {
         "caller_id": "+13055550199",
@@ -59,7 +64,11 @@ def test_known_number_returns_that_shops_variables_and_overrides(init_client):
         "services_text": shop.services_text(),
         "persona_name": "Bear",
         "features_text": shop.features_text(),
+        "shop_timezone": "America/New_York",
+        "languages_text": "English, Spanish and French",
+        "call_start_local": data["dynamic_variables"]["call_start_local"],
     }
+    assert_recent_local(data["dynamic_variables"]["call_start_local"], "America/New_York")
     assert data["conversation_config_override"] == {
         "agent": {"first_message": shop.first_messages["en"], "language": "en"},
         "tts": {"voice_id": "PLACEHOLDER_VOICE_EN"},
@@ -71,6 +80,7 @@ def test_second_shop_is_found_by_its_own_number_and_primary_language(init_client
     assert data["dynamic_variables"]["shop_id"] == "west-shop"
     assert data["dynamic_variables"]["shop_city"] == "Doral"
     assert data["dynamic_variables"]["persona_name"] == "Gaby"
+    assert data["dynamic_variables"]["languages_text"] == "Spanish, English and French"
     override = data["conversation_config_override"]
     assert override["agent"]["language"] == "es"
     assert "puede ser grabada" in override["agent"]["first_message"]
@@ -87,6 +97,9 @@ def test_unknown_number_gets_a_safe_message_only_greeting(init_client, number):
     data = init(init_client, body(number))
     variables = data["dynamic_variables"]
     assert variables["shop_id"] == "unknown"
+    assert variables["shop_timezone"] == "America/New_York"  # the default shop's zone
+    assert variables["languages_text"] == "English"
+    assert_recent_local(variables["call_start_local"], "America/New_York")
     assert "Vice City" not in str(data)
     assert "take a message" in variables["features_text"]
     agent = data["conversation_config_override"]["agent"]

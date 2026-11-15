@@ -67,3 +67,19 @@ def test_features_text_states_only_what_is_on(features, expected):
 
 def test_hours_text_with_one_holiday():
     assert shop(holidays=["2026-12-25"]).hours_text(TODAY).endswith("Closed for holidays on Friday, December 25, 2026.")
+
+
+@pytest.mark.parametrize(
+    "languages,expected",
+    [(["en"], "English"), (["es", "en"], "Spanish and English"), (["en", "es", "fr"], "English, Spanish and French")],
+)
+def test_languages_text(languages, expected):
+    data = config(
+        languages=languages,
+        voices={lang: f"PLACEHOLDER_VOICE_{lang.upper()}" for lang in languages},
+        first_messages={
+            lang: {"en": "Calls may be recorded.", "es": "Puede ser grabada.", "fr": "Peut être enregistré."}[lang]
+            for lang in languages
+        },
+    )
+    assert ShopConfig.model_validate(data).languages_text() == expected

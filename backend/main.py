@@ -583,10 +583,11 @@ def create_app() -> FastAPI:
         shop = shops_by_number.get(number)
         request.state.bear_shop_id = UNKNOWN_SHOP_ID if shop is None else shop.shop_id
         request.state.bear_conversation_id = call.conversation_id
+        now = datetime.now(UTC)
         if shop is None:
-            reply = unknown_initiation()
+            reply = unknown_initiation(now, default_shop.tz)
         else:
-            reply = shop_initiation(shop, datetime.now(shop.tz).date())
+            reply = shop_initiation(shop, now)
         return JSONResponse(reply.model_dump(exclude_none=True))
 
     @app.post("/tools/book_appointment", dependencies=[Depends(check_secret)])
