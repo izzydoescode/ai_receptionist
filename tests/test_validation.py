@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pytest
 
 WRITE_TOOLS = ["book_appointment", "request_tow", "take_message"]
-COLLECTION = dict(zip(WRITE_TOOLS, ["appointments", "tows", "messages"]))
+COLLECTION = dict(zip(WRITE_TOOLS, ["appointments", "tows", "messages"], strict=True))
 TEXT_LIMITS = [
     ("book_appointment", "customer_name", 80),
     ("book_appointment", "vehicle", 80),

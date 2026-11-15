@@ -3,15 +3,15 @@ import base64
 import json
 import logging
 import os
-from pathlib import Path
 import re
 import subprocess
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
-import main
 import pytest
 
+import main
 from conftest import ADMIN_AUTH, SECRET
 
 ROOT = Path(__file__).resolve().parents[1]

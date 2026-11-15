@@ -2,13 +2,20 @@
 Usage: python tools/make_tools.py https://YOUR-ID.ngrok-free.app
 Each file is a valid `tool_config` for POST /v1/convai/tools (or `elevenlabs tools add --config-path`).
 """
-import json, sys
+import json
+import sys
 from pathlib import Path
 
 TOOLS_DIR = Path(__file__).resolve().parent
 DEFAULT_BASE = "https://YOUR-NGROK-ID.ngrok-free.app"
-S = lambda d: {"type": "string", "description": d}
-B = lambda d: {"type": "boolean", "description": d}
+
+
+def S(d):
+    return {"type": "string", "description": d}
+
+
+def B(d):
+    return {"type": "boolean", "description": d}
 
 TOOLS = {
  "book_appointment": ("Book a drop-off appointment at the shop. Call ONLY after you have collected and read back name, phone, vehicle, service, date and time. If it returns booked=false, offer the alternatives it gives.",

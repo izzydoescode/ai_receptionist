@@ -10,29 +10,29 @@ Expose: ngrok http 8000   (then paste https://<id>.ngrok-free.app/tools/... into
 from __future__ import annotations
 
 import asyncio
-import contextvars
-import sys
-import time
 import base64
 import binascii
+import contextvars
 import hmac
 import html
 import json
 import logging
 import os
 import re
-import uuid
+import sys
+import time
 import unicodedata
+import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, BeforeValidator, Field
 
 
@@ -174,13 +174,13 @@ class BookAppointment(BaseModel):
     preferred_date: Annotated[str, BeforeValidator(validate_date)]
     preferred_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     language: Language = "en"
-    notes: Optional[OptionalText] = None
+    notes: OptionalText | None = None
 
 
 class RepairStatus(BaseModel):
-    phone: Annotated[Optional[str], BeforeValidator(integer_to_string)] = Field(default=None, max_length=32)
-    ro_number: Annotated[Optional[str], BeforeValidator(integer_to_string)] = Field(default=None, max_length=20)
-    last_name: Optional[str] = Field(default=None, max_length=80)
+    phone: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=32)
+    ro_number: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=20)
+    last_name: str | None = Field(default=None, max_length=80)
 
 
 class TowRequest(BaseModel):
@@ -190,7 +190,7 @@ class TowRequest(BaseModel):
     pickup_location: Text = Field(description="street address, cross streets, or landmark")
     issue: Text = Field(description="what happened")
     is_safe: bool = Field(description="caller confirmed they are in a safe place")
-    destination: Optional[OptionalText] = None
+    destination: OptionalText | None = None
     language: Language = "en"
 
 
@@ -200,7 +200,7 @@ class TakeMessage(BaseModel):
     reason: Text
     urgency: Urgency = "normal"
     callback_language: Language = "en"
-    vehicle: Optional[OptionalName] = None
+    vehicle: OptionalName | None = None
 
 
 def invalid_input(field, message):
@@ -234,7 +234,7 @@ class _DeadlineExceeded(Exception):
     """Private signal preventing an abandoned worker from persisting changes."""
 
 
-def read_db(path: Path) -> Optional[dict]:
+def read_db(path: Path) -> dict | None:
     """Read the data seam on every load, including the initial seed."""
     try:
         return json.loads(path.read_text())
@@ -316,7 +316,7 @@ class RequestLoggingMiddleware:
                 # Shielding lets us return promptly even while a sync worker is running.
                 try:
                     await asyncio.wait_for(asyncio.shield(task), max(0, start + self.deadline_seconds - time.monotonic()))
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     abandoned = True
                     task.cancel()
                     task.add_done_callback(self._consume_task)
@@ -333,7 +333,7 @@ class RequestLoggingMiddleware:
                     result = json.loads(body)
                 except ValueError:
                     pass
-            entry.update(ts=datetime.now(timezone.utc).isoformat(), level="info", event="request",
+            entry.update(ts=datetime.now(UTC).isoformat(), level="info", event="request",
                          status=status, latency_ms=round((time.monotonic() - start) * 1000, 1),
                          ok=result.get("ok", 200 <= status < 300))
             error = {401: "unauthorized", 400: "transport", 413: "transport", 415: "transport",
@@ -428,13 +428,13 @@ def create_app() -> FastAPI:
         return await request_validation_exception_handler(request, exc)
 
 
-    def check_secret(x_tool_secret: Optional[str] = Header(default=None)):
+    def check_secret(x_tool_secret: str | None = Header(default=None)):
         if settings.tool_secret and not hmac.compare_digest(
             (x_tool_secret or "").encode("utf-8"), settings.tool_secret.encode("utf-8")
         ):
             raise HTTPException(status_code=401, detail="bad tool secret")
 
-    def check_admin(authorization: Optional[str] = Header(default=None)):
+    def check_admin(authorization: str | None = Header(default=None)):
         if not settings.admin_password:
             raise HTTPException(status_code=503, detail="admin disabled")
         unauthorized = HTTPException(
@@ -448,7 +448,7 @@ def create_app() -> FastAPI:
             credentials = base64.b64decode(encoded, validate=True)
             username, password = credentials.split(b":", 1)
         except (ValueError, binascii.Error):
-            raise unauthorized
+            raise unauthorized from None
         user_ok = hmac.compare_digest(username, settings.admin_user.encode("utf-8"))
         password_ok = hmac.compare_digest(password, settings.admin_password.encode("utf-8"))
         if not (user_ok & password_ok):
@@ -467,11 +467,11 @@ def create_app() -> FastAPI:
             raise _DeadlineExceeded
         settings.data_file.write_text(json.dumps(db, indent=2, ensure_ascii=False))
 
-    def digits(s: Optional[str]) -> str:
+    def digits(s: str | None) -> str:
         return re.sub(r"\D", "", s or "")[-10:]
 
     # ---------- helpers ----------
-    def slot_ok(dt: datetime) -> Optional[str]:
+    def slot_ok(dt: datetime) -> str | None:
         wd = dt.weekday()
         if wd == 6:
             return "We're closed Sundays."
@@ -586,7 +586,7 @@ def create_app() -> FastAPI:
     </body></html>"""
 
     @app.post("/admin/reset")
-    def reset(authorization: Optional[str] = Header(default=None)):
+    def reset(authorization: str | None = Header(default=None)):
         if settings.env != "dev":
             raise HTTPException(status_code=404, detail="Not Found")
         check_admin(authorization)

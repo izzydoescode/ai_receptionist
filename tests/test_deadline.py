@@ -1,13 +1,13 @@
 """Task 4 deadlines must stop work before a timed-out write can persist."""
 import json
 import logging
-from pathlib import Path
 import time
+from pathlib import Path
+
+import pytest
 
 import main
 import make_tools
-import pytest
-
 from conftest import ADMIN_AUTH
 from test_logging import request_record
 

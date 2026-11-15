@@ -4,8 +4,8 @@ by pasting tools/*.json fields (Agent > Tools > Add tool > Webhook).
 """
 import json
 import os
-from pathlib import Path
 import urllib.request
+from pathlib import Path
 
 
 def main(tools_dir=None):
