@@ -137,22 +137,30 @@ class Store:
         else:
             from sqlalchemy.dialects.postgresql import insert as upsert
         with self._write() as conn:
-            statement = (
-                upsert(repair_orders)
-                .values(
-                    shop_id=shop_id,
-                    public_id="R" + secrets.token_hex(3).upper(),
-                    created_at=now,
-                    updated_at=now,
-                    **fields,
+            for _ in range(5):
+                public_id = "R" + secrets.token_hex(3).upper()
+                statement = (
+                    upsert(repair_orders)
+                    .values(
+                        shop_id=shop_id,
+                        public_id=public_id,
+                        created_at=now,
+                        updated_at=now,
+                        **fields,
+                    )
+                    .on_conflict_do_update(
+                        index_elements=["shop_id", "ro_number"],
+                        set_={**fields, "updated_at": now},
+                    )
+                    .returning(repair_orders)
                 )
-                .on_conflict_do_update(
-                    index_elements=["shop_id", "ro_number"],
-                    set_={**fields, "updated_at": now},
-                )
-                .returning(repair_orders)
-            )
-            return dict(conn.execute(statement).mappings().one())
+                try:
+                    with conn.begin_nested():
+                        return dict(conn.execute(statement).mappings().one())
+                except IntegrityError:
+                    if conn.scalar(select(repair_orders.c.id).where(repair_orders.c.public_id == public_id)) is None:
+                        raise
+            raise RuntimeError("could not allocate public id")
 
     def record_audit(self, shop_id, event, entity_public_id=None, outcome=None, *, created_at=None):
         with self._write() as conn:

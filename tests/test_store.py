@@ -268,3 +268,13 @@ def test_public_id_collision_retries_with_new_id(store, engine, monkeypatch, ope
     if operation == "book":
         assert second["bay"] == 2
     assert len({row["public_id"] for row in audit_rows(engine)}) == len(audit_rows(engine))
+
+
+def test_repair_public_id_collision_retries_with_new_id(store, monkeypatch):
+    ids = iter(["ABC123", "ABC123", "DEF456"])
+    monkeypatch.setattr("bear.store.secrets.token_hex", lambda n: next(ids))
+    first = store.upsert_repair_order(SHOP, **REPAIR)
+    second = store.upsert_repair_order(SHOP, **{**REPAIR, "ro_number": "9002"})
+    assert first["public_id"] == "RABC123"
+    assert second["public_id"] == "RDEF456"
+    assert {row["ro_number"] for row in store.list_repair_orders(SHOP)} == {"9001", "9002"}
