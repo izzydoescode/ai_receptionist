@@ -273,3 +273,34 @@ def test_request_json_written_to_stdout(tmp_path):
             # Non-JSON lines (uvicorn/other output) are ignored.
             continue
     assert any(isinstance(e, dict) and e.get("event") == "request" and e.get("path") == "/health" for e in entries)
+
+
+@pytest.mark.parametrize(
+    "body_shop,logged_shop,error",
+    [
+        (None, "vice-city-auto", None),
+        ("null", "vice-city-auto", None),
+        ("west-shop", "west-shop", None),
+        ("no-such-shop", "no-such-shop", "unknown_shop"),
+        ("Bad Shop", None, "invalid_input"),
+        (7, None, "invalid_input"),
+    ],
+)
+def test_tool_logs_carry_the_resolved_shop_id(
+    make_client, payloads, tool_headers, caplog, body_shop, logged_shop, error
+):
+    client = make_client(_shops=[{}, {"shop_id": "west-shop"}])
+    payload = dict(payloads["take_message"])
+    if body_shop is not None:
+        payload["shop_id"] = None if body_shop == "null" else body_shop
+    with caplog.at_level(logging.INFO):
+        response = client.post("/tools/take_message", json=payload, headers=tool_headers)
+    entry = request_record(caplog, response, "POST", "/tools/take_message", "take_message")
+    assert entry.get("shop_id") == logged_shop
+    assert entry.get("error") == error
+
+
+def test_non_tool_logs_have_no_shop_id(client, caplog):
+    with caplog.at_level(logging.INFO):
+        response = client.get("/health")
+    assert "shop_id" not in request_record(caplog, response, "GET", "/health")

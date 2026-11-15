@@ -244,9 +244,10 @@ def configure_logging():
 class RequestLoggingMiddleware:
     """Bound tool work and log only metadata, validated IDs and masked phones."""
 
-    def __init__(self, app, deadline_ms):
+    def __init__(self, app, deadline_ms, default_shop_id):
         self.app = app
         self.deadline_seconds = deadline_ms / 1000
+        self.default_shop_id = default_shop_id
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -352,13 +353,19 @@ class RequestLoggingMiddleware:
                 404: "not_found",
                 503: "unavailable",
             }.get(status)
-            if result.get("error") in {"invalid_input", "timeout", "internal_error"}:
+            if result.get("error") in {"invalid_input", "timeout", "internal_error", "unknown_shop"}:
                 error = result["error"]
                 if error == "invalid_input":
                     entry["field"] = result["field"]
             if error:
                 entry["error"] = error
-            phone = scope.get("state", {}).get("bear_body", {}).get("phone")
+            tool_body = scope.get("state", {}).get("bear_body", {})
+            if is_tool:
+                shop_id = tool_body.get("shop_id")
+                shop_id = self.default_shop_id if shop_id is None else shop_id
+                if isinstance(shop_id, str) and re.fullmatch(SHOP_ID_PATTERN, shop_id):
+                    entry["shop_id"] = shop_id
+            phone = tool_body.get("phone")
             if isinstance(phone, (str, int)) and not isinstance(phone, bool):
                 digits = re.sub(r"\D", "", str(phone))
                 if len(digits) >= 4:
@@ -465,7 +472,9 @@ def create_app() -> FastAPI:
     app.state.shops = shops
     store = app.state.store = Store(engine, write_guard=check_deadline)
     app.add_middleware(ToolTransportMiddleware)
-    app.add_middleware(RequestLoggingMiddleware, deadline_ms=settings.tool_deadline_ms)
+    app.add_middleware(
+        RequestLoggingMiddleware, deadline_ms=settings.tool_deadline_ms, default_shop_id=settings.shop_id
+    )
 
     @app.exception_handler(RequestValidationError)
     async def tool_validation_error(request, exc):
