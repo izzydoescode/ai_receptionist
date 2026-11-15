@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import sys
+import threading
 import time
 import base64
 import binascii
@@ -242,13 +243,34 @@ def validation_message(field, error):
 
 
 # Only derived, allowlisted fields belong in request logs; never log exceptions or bodies.
-_REQUEST_DEADLINE = contextvars.ContextVar("tool_deadline", default=None)
+# Mutable bound so a worker thread sees abandoned=True after the event loop times out.
+_REQUEST_BOUND = contextvars.ContextVar("tool_bound", default=None)
+# JSON writes replace the whole file; the lock must span load-modify-save so two
+# requests cannot read the same snapshot and overwrite each other's records.
+_STORE_LOCK = threading.RLock()
 _TOOL_NAMES = {"book_appointment", "check_repair_status", "request_tow", "take_message"}
 _CORRELATION_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
 
 class _DeadlineExceeded(Exception):
     """Private signal preventing an abandoned worker from persisting changes."""
+
+
+def write_is_open() -> bool:
+    bound = _REQUEST_BOUND.get()
+    if not bound:
+        return True
+    if bound.get("abandoned"):
+        return False
+    deadline = bound.get("deadline")
+    return deadline is None or time.monotonic() < deadline
+
+
+def persist_json(path: Path, db: dict) -> None:
+    """Write the data file only if this request is still allowed to commit."""
+    if not write_is_open():
+        raise _DeadlineExceeded
+    path.write_text(json.dumps(db, indent=2, ensure_ascii=False))
 
 
 def read_db(path: Path) -> Optional[dict]:
@@ -326,7 +348,8 @@ class RequestLoggingMiddleware:
                     await JSONResponse({"ok": False, "error": "internal_error",
                         "message": "Sorry, something went wrong on our end. Let me take a message."})(scope, receive, downstream_send)
 
-        token = _REQUEST_DEADLINE.set(start + self.deadline_seconds if is_tool else None)
+        bound = {"deadline": start + self.deadline_seconds, "abandoned": False} if is_tool else None
+        token = _REQUEST_BOUND.set(bound)
         try:
             if is_tool:
                 task = asyncio.create_task(run_tool())
@@ -335,6 +358,7 @@ class RequestLoggingMiddleware:
                     await asyncio.wait_for(asyncio.shield(task), max(0, start + self.deadline_seconds - time.monotonic()))
                 except asyncio.TimeoutError:
                     abandoned = True
+                    bound["abandoned"] = True
                     task.cancel()
                     task.add_done_callback(self._consume_task)
                     body.clear()
@@ -343,7 +367,7 @@ class RequestLoggingMiddleware:
             else:
                 await self.app(scope, receive, capture)
         finally:
-            _REQUEST_DEADLINE.reset(token)
+            _REQUEST_BOUND.reset(token)
             result = {}
             if is_tool and status == 200:
                 try:
@@ -472,17 +496,16 @@ def create_app() -> FastAPI:
             raise unauthorized
 
     def load() -> dict:
-        db = read_db(settings.data_file)
-        if db is not None:
-            return db
-        save(SEED)
-        return json.loads(json.dumps(SEED))
+        with _STORE_LOCK:
+            db = read_db(settings.data_file)
+            if db is not None:
+                return db
+            save(SEED)
+            return json.loads(json.dumps(SEED))
 
     def save(db: dict) -> None:
-        deadline = _REQUEST_DEADLINE.get()
-        if deadline is not None and time.monotonic() >= deadline:
-            raise _DeadlineExceeded
-        settings.data_file.write_text(json.dumps(db, indent=2, ensure_ascii=False))
+        with _STORE_LOCK:
+            persist_json(settings.data_file, db)
 
     def digits(s: Optional[str]) -> str:
         return re.sub(r"\D", "", s or "")[-10:]
@@ -522,18 +545,21 @@ def create_app() -> FastAPI:
     def book_appointment(req: BookAppointment):
         if date.fromisoformat(req.preferred_date) > datetime.now(settings.shop_tz).date() + timedelta(days=60):
             return invalid_input("preferred_date", "I can only book up to 60 days out.")
-        db = load()
-        dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(tzinfo=settings.shop_tz)
-        problem = slot_ok(dt) or ("That slot is full." if count_at(db, dt) >= BAYS_PER_SLOT else None)
-        if problem:
-            return {"ok": True, "booked": False, "message": problem, "alternatives": next_slots(db, max(dt, datetime.now(settings.shop_tz)))}
-        appt = {"id": "A" + uuid.uuid4().hex[:6].upper(), "start": dt.isoformat(), **req.model_dump(),
-                "created": datetime.now(settings.shop_tz).isoformat()}
-        db["appointments"].append(appt)
-        save(db)
-        return {"ok": True, "booked": True, "confirmation": appt["id"],
-                "when": dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " "),
-                "message": f"Booked {req.vehicle} for {req.service}. Bring the keys to the front desk."}
+        with _STORE_LOCK:
+            if not write_is_open():
+                raise _DeadlineExceeded
+            db = load()
+            dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(tzinfo=settings.shop_tz)
+            problem = slot_ok(dt) or ("That slot is full." if count_at(db, dt) >= BAYS_PER_SLOT else None)
+            if problem:
+                return {"ok": True, "booked": False, "message": problem, "alternatives": next_slots(db, max(dt, datetime.now(settings.shop_tz)))}
+            appt = {"id": "A" + uuid.uuid4().hex[:6].upper(), "start": dt.isoformat(), **req.model_dump(),
+                    "created": datetime.now(settings.shop_tz).isoformat()}
+            db["appointments"].append(appt)
+            save(db)
+            return {"ok": True, "booked": True, "confirmation": appt["id"],
+                    "when": dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " "),
+                    "message": f"Booked {req.vehicle} for {req.service}. Bring the keys to the front desk."}
 
     @app.post("/tools/check_repair_status", dependencies=[Depends(check_secret)])
     def check_repair_status(req: RepairStatus):
@@ -564,12 +590,15 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/request_tow", dependencies=[Depends(check_secret)])
     def request_tow(req: TowRequest):
-        db = load()
-        tow = {"id": "T" + uuid.uuid4().hex[:6].upper(), **req.model_dump(),
-               "destination": req.destination or settings.shop_name, "created": datetime.now(settings.shop_tz).isoformat(),
-               "status": "dispatch_requested"}
-        db["tows"].append(tow)
-        save(db)
+        with _STORE_LOCK:
+            if not write_is_open():
+                raise _DeadlineExceeded
+            db = load()
+            tow = {"id": "T" + uuid.uuid4().hex[:6].upper(), **req.model_dump(),
+                   "destination": req.destination or settings.shop_name, "created": datetime.now(settings.shop_tz).isoformat(),
+                   "status": "dispatch_requested"}
+            db["tows"].append(tow)
+            save(db)
         msg = "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
         if not req.is_safe:
             msg = "Caller may be unsafe: tell them to call 911 now if anyone is hurt or they're in traffic. " + msg
@@ -577,10 +606,13 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/take_message", dependencies=[Depends(check_secret)])
     def take_message(req: TakeMessage):
-        db = load()
-        m = {"id": "M" + uuid.uuid4().hex[:6].upper(), **req.model_dump(), "created": datetime.now(settings.shop_tz).isoformat()}
-        db["messages"].append(m)
-        save(db)
+        with _STORE_LOCK:
+            if not write_is_open():
+                raise _DeadlineExceeded
+            db = load()
+            m = {"id": "M" + uuid.uuid4().hex[:6].upper(), **req.model_dump(), "created": datetime.now(settings.shop_tz).isoformat()}
+            db["messages"].append(m)
+            save(db)
         lang = {"ht": " A Creole-speaking team member will call back.", "es": " Alguien que habla español le llamará."}.get(req.callback_language, "")
         return {"ok": True, "saved": True, "ticket": m["id"], "message": "Message saved for the service writer." + lang}
 
@@ -607,7 +639,8 @@ def create_app() -> FastAPI:
         if settings.env != "dev":
             raise HTTPException(status_code=404, detail="Not Found")
         check_admin(authorization)
-        save(SEED)
+        with _STORE_LOCK:
+            save(SEED)
         return {"reset": True}
 
     return app

@@ -88,3 +88,46 @@ def test_generated_tool_timeouts(tmp_path):
     paths = make_tools.main([], out_dir=tmp_path)
     assert len(paths) == 4
     assert all(json.loads(path.read_text())["response_timeout_secs"] == 10 for path in paths)
+
+
+def test_write_is_open_respects_abandoned_flag_before_deadline():
+    # A timed-out worker can reach save() while the wall clock still looks
+    # slightly early; the abandoned flag must close the write anyway.
+    token = main._REQUEST_BOUND.set({"deadline": time.monotonic() + 30, "abandoned": False})
+    try:
+        assert main.write_is_open() is True
+        main._REQUEST_BOUND.get()["abandoned"] = True
+        assert main.write_is_open() is False
+    finally:
+        main._REQUEST_BOUND.reset(token)
+
+
+def test_abandoned_worker_does_not_clobber_newer_write(tmp_path):
+    # A timed-out worker may still hold a stale snapshot after a newer request
+    # has already rewritten the file. persist_json must refuse that write.
+    path = tmp_path / "data.json"
+    path.write_text(json.dumps({"messages": [{"reason": "newer message"}]}, indent=2), encoding="utf-8")
+    token = main._REQUEST_BOUND.set({"deadline": time.monotonic() + 30, "abandoned": True})
+    try:
+        with pytest.raises(main._DeadlineExceeded):
+            main.persist_json(path, {"messages": [{"reason": "stale message"}]})
+    finally:
+        main._REQUEST_BOUND.reset(token)
+    assert json.loads(path.read_text())["messages"] == [{"reason": "newer message"}]
+
+@pytest.mark.parametrize("tool,flag", [("take_message", "saved"), ("request_tow", "logged"), ("book_appointment", "booked")])
+def test_write_cycle_bails_when_the_request_is_no_longer_open(make_client, monkeypatch, payloads, tool_headers, tool, flag):
+    client = make_client()
+    path = client.app.state.settings.data_file
+    assert client.get("/admin", auth=ADMIN_AUTH).status_code == 200
+    before = path.read_text()
+    monkeypatch.setattr(main, "write_is_open", lambda: False)
+    response = client.post(f"/tools/{tool}", json=payloads[tool], headers=tool_headers)
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": False,
+        "error": "internal_error",
+        "message": "Sorry, something went wrong on our end. Let me take a message.",
+    }
+    assert flag not in response.json()
+    assert path.read_text() == before
