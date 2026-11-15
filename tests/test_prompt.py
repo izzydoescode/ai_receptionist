@@ -97,3 +97,30 @@ def test_features_on_prompt_keeps_the_real_promises():
     text = rendered_prompt(ALL_ON)
     assert "text photos" in text
     assert "15 minutes" in text
+
+
+# Fla. Stat. 934.03: every greeting says the call may be recorded before asking anything.
+NOTICES = {"en": "may be recorded", "es": "puede ser grabada", "fr": "peut être enregistré", "ht": "ka anrejistre"}
+
+
+def first_messages_in_prompt():
+    rows = re.findall(r"^\| \*\*(en|es|fr|ht)\*\*[^|]*\| `([^`]+)` \|$", PROMPT, re.MULTILINE)
+    return dict(rows)
+
+
+def test_prompt_lists_a_first_message_per_language():
+    assert set(first_messages_in_prompt()) == set(NOTICES)
+
+
+@pytest.mark.parametrize("language", sorted(NOTICES))
+def test_prompt_first_message_gives_the_recording_notice_first(language):
+    message = first_messages_in_prompt()[language]
+    question = min(i for i in (message.find("?"), message.find("¿")) if i >= 0)
+    assert 0 <= message.lower().find(NOTICES[language]) < question
+
+
+def test_french_first_message_is_french_only():
+    assert first_messages_in_prompt()["fr"] == (
+        "Bonjour, vous êtes bien chez {{shop_name}}. Je suis {{persona_name}}, l'assistant virtuel. "
+        "L'appel peut être enregistré. Comment puis-je vous aider ?"
+    )
