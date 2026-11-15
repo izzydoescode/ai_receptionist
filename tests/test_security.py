@@ -157,7 +157,7 @@ def test_apps_keep_their_own_secret_and_data_file(make_client, payloads, tmp_pat
     second = make_client(DATA_FILE=second_path, TOOL_SECRET=other_secret)
     assert first.post("/tools/take_message", json=payloads["take_message"], headers={"X-Tool-Secret": SECRET}).status_code == 200
     assert second.post("/tools/take_message", json=payloads["take_message"], headers={"X-Tool-Secret": SECRET}).status_code == 401
-    assert second.post("/tools/check_repair_status", json={"ro_number": "1001"}, headers={"X-Tool-Secret": other_secret}).status_code == 200
+    assert second.post("/tools/check_repair_status", json={"last_name": "Rivera", "ro_number": "1001"}, headers={"X-Tool-Secret": other_secret}).status_code == 200
     assert len(json.loads(first_path.read_text())["messages"]) == 1
     assert json.loads(second_path.read_text())["messages"] == []
 
