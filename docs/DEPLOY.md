@@ -28,10 +28,11 @@ CI (`.github/workflows/container.yml`) builds the image on every push and runs i
 ```bash
 docker build -t bear .
 python -c "import secrets; [print(f'{name}={secrets.token_urlsafe(32)}') for name in ('TOOL_SECRET', 'INIT_WEBHOOK_SECRET', 'ADMIN_PASSWORD')]" > .env.docker
-docker run --rm -p 8080:8080 --env-file .env.docker -e BEAR_MIGRATE_ON_BOOT=1 -v bear-data:/data bear
+docker run --rm -p 8080:8080 --env-file .env.docker -e BEAR_ENV=dev -e BEAR_MIGRATE_ON_BOOT=1 -v bear-data:/data bear
 curl http://localhost:8080/health
+curl http://localhost:8080/ready
 ```
-`.env.docker` matches `.env.*` in `.gitignore` and `.dockerignore`, so it never gets committed or baked into the image. With no `DATABASE_URL`, the app uses SQLite at `/data/bear.db`, kept in the `bear-data` volume.
+`.env.docker` matches `.env.*` in `.gitignore` and `.dockerignore`, so it never gets committed or baked into the image. With no `DATABASE_URL`, the app uses SQLite at `/data/bear.db`, kept in the `bear-data` volume. `create_app` refuses a `sqlite:` URL unless `BEAR_ENV=dev`, so the local run sets that explicitly.
 
 ## Environment variables
 | Variable | Where it's set on Fly | Required | What it does |
@@ -39,7 +40,7 @@ curl http://localhost:8080/health
 | `TOOL_SECRET` | `fly secrets set` | yes | Shared secret ElevenLabs sends in `X-Tool-Secret` on every `/tools/*` call. At least 32 characters. Store the same value as an ElevenLabs workspace secret (`tools/README.md`). |
 | `INIT_WEBHOOK_SECRET` | `fly secrets set` | yes | Shared secret ElevenLabs sends in `X-Init-Webhook-Secret` to `POST /elevenlabs/init`. At least 32 characters, and different from `TOOL_SECRET` (`docs/ELEVENLABS_INIT.md`). |
 | `INIT_WEBHOOK_SECRET_PREVIOUS` | `fly secrets set` (optional) | no | Previous init secret, also accepted during rotation so you can update ElevenLabs and the server in either order. If set, same 32-character and not-`TOOL_SECRET` rules. |
-| `DATABASE_URL` | `fly secrets set` | yes on Fly | The Neon connection string, `postgresql://…?sslmode=require`. `postgres://` and `postgresql://` are turned into `postgresql+psycopg://` automatically. The image's default, `sqlite:////data/bear.db`, doesn't persist on Fly without a volume. |
+| `DATABASE_URL` | `fly secrets set` | yes on Fly | The Neon connection string, `postgresql://…?sslmode=require`. `postgres://` and `postgresql://` are turned into `postgresql+psycopg://` automatically. The image's default is `sqlite:////data/bear.db`. `create_app` refuses a `sqlite:` URL unless `BEAR_ENV=dev`, so a forgotten `DATABASE_URL` on Fly fails startup instead of writing a throwaway file. |
 | `ADMIN_PASSWORD` | `fly secrets set` | for `/admin` | HTTP Basic password for the board. If unset, `/admin` returns 503. |
 | `ADMIN_USER` | `fly secrets set` (optional) | no | HTTP Basic username. Default `admin`. |
 | `SHOP_ID` | `fly.toml` `[env]` | no | Default shop for tool calls. Default `vice-city-auto`. It must have a file in `SHOPS_DIR`. |
@@ -47,14 +48,14 @@ curl http://localhost:8080/health
 | `TOOL_DEADLINE_MS` | `fly.toml` `[env]` | no | Tool request deadline. Default `4000`. |
 | `BEAR_MIGRATE_ON_BOOT` | `fly.toml` `[env]` = `0` | no | `1` runs `alembic upgrade head` on container start. Fly uses its release command instead. |
 | `FORWARDED_ALLOW_IPS` | `fly.toml` `[env]` = `*` | no | Which proxies uvicorn trusts for `X-Forwarded-*`. The image default is `127.0.0.1`. On Fly, only Fly's proxy reaches the app's port. |
-| `BEAR_ENV` | never | no | `dev` turns off the secret checks and enables `POST /admin/reset`. **Never set it in production.** |
+| `BEAR_ENV` | never | no | `dev` turns off the secret checks, enables `POST /admin/reset`, and is the only environment that may use a `sqlite:` `DATABASE_URL`. **Never set it in production.** |
 | `PUBLIC_BASE_URL` | not on the server | for `tools/make_tools.py` | The app's public URL, e.g. `https://bear-receptionist.fly.dev`. It's used on your machine to generate the tool configs. |
 
 ## Fly.io + Neon setup (when ready; not done yet)
 ### Neon
 1. Sign up at https://neon.com (free plan), create a project in **AWS US East (N. Virginia)**, close to Fly's `iad`, and name the database `bear`.
 2. Under Connect, copy the **direct** (non-pooled) connection string. One small machine doesn't need the pooler, and the direct string avoids PgBouncer quirks with psycopg prepared statements. It looks like `postgresql://<user>:<password>@<endpoint>.us-east-1.aws.neon.tech/bear?sslmode=require&channel_binding=require`.
-3. **Neon cold start:** after 5 idle minutes the compute sleeps, and the next query takes a few hundred ms longer. The app already reconnects (`pool_pre_ping`). `/health` doesn't touch the database, so Fly's checks don't keep it awake. That's accepted for now. If first calls of the day feel slow, a scheduled ping would be a follow-up.
+3. **Neon cold start:** after 5 idle minutes the compute sleeps, and the next query takes a few hundred ms longer. The app already reconnects (`pool_pre_ping`). Fly's check probes `/health`, which doesn't touch the database, so those checks don't keep Neon awake. That's accepted for now. External uptime monitors can hit `/ready`, which runs `SELECT 1` and returns 503 if the database is down; don't point Fly's check at `/ready`, or a sleeping Neon would mark the machine unhealthy. If first calls of the day feel slow, a scheduled ping would be a follow-up.
 
 ### Fly
 1. Install `flyctl`, run `fly auth signup` or `fly auth login`, and add a card (bills under $5 are waived).
@@ -62,17 +63,27 @@ curl http://localhost:8080/health
    ```bash
    fly apps create bear-receptionist
    ```
-3. Set the secrets. Generate fresh random values; never reuse the dev ones:
+3. Set the secrets. Generate fresh random values into shell variables (never reuse the dev ones), print them once so you can copy them, then import them on stdin. Don't generate the value inside `$(...)` on a `fly secrets set` line — you would never see it, and it can also land in your shell history:
    ```bash
-   fly secrets set --stage \
-     TOOL_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" \
-     INIT_WEBHOOK_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" \
-     ADMIN_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+   TOOL_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+   INIT_WEBHOOK_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+   ADMIN_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')
+   echo "save these now:"
+   echo "TOOL_SECRET=$TOOL_SECRET"
+   echo "INIT_WEBHOOK_SECRET=$INIT_WEBHOOK_SECRET"
+   echo "ADMIN_PASSWORD=$ADMIN_PASSWORD"
+   fly secrets import --stage <<EOF
+   TOOL_SECRET=$TOOL_SECRET
+   INIT_WEBHOOK_SECRET=$INIT_WEBHOOK_SECRET
+   ADMIN_PASSWORD=$ADMIN_PASSWORD
+   EOF
    fly secrets set --stage DATABASE_URL="<Neon direct connection string>"
    ```
-   `--stage` stores them without restarting anything. Copy `TOOL_SECRET` and `INIT_WEBHOOK_SECRET` into ElevenLabs right away (step 6). Fly won't show them again, so if you lose them, set new ones.
+   `--stage` stores them without restarting anything. Copy `TOOL_SECRET` and `INIT_WEBHOOK_SECRET` into ElevenLabs right away (step 6). Fly won't show them again, so if you lose them, set new ones. During a later rotation you can also set `INIT_WEBHOOK_SECRET_PREVIOUS` the same way so both secrets are accepted.
 4. Deploy: `fly deploy`. The release command runs `alembic upgrade head` against Neon first. Then one machine starts in `iad` and must pass the `/health` check.
-5. Check it: `curl https://bear-receptionist.fly.dev/health`, then open `https://bear-receptionist.fly.dev/admin` and log in as `admin` with the password you set. Optional demo data: `fly ssh console -C "python -m bear.seed --demo"`.
+
+   The cheap default is one always-on machine (`min_machines_running = 1`, rolling deploys). Two machines plus a bluegreen deploy would avoid downtime on releases, at roughly double the Fly compute cost, but a Fly volume can only attach to one machine at a time — so if you later mount shop files on a volume, you stay on one machine and rolling/bluegreen can't run two copies that share it. Revisit this before the first real shop file if zero-downtime deploys matter more than the extra monthly cost.
+5. Check it: `curl https://bear-receptionist.fly.dev/health` and `curl https://bear-receptionist.fly.dev/ready`, then open `https://bear-receptionist.fly.dev/admin` and log in as `admin` with the password you set. Optional demo data: `fly ssh console -C "python -m bear.seed --demo"`.
 6. Point ElevenLabs at it:
    - Init webhook: `https://bear-receptionist.fly.dev/elevenlabs/init`, with secret header `X-Init-Webhook-Secret` (`docs/ELEVENLABS_INIT.md`).
    - Tools: run `PUBLIC_BASE_URL=https://bear-receptionist.fly.dev python tools/make_tools.py`, then follow `tools/README.md`. That includes the workspace secret that holds `TOOL_SECRET`.

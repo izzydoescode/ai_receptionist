@@ -8,6 +8,9 @@ set -- --name "$name" --network host --env-file "$RUNNER_TEMP/bear.env" \
     --health-interval 2s --health-start-period 5s --health-retries 10
 if [ "$database_url" ]; then
     set -- "$@" -e DATABASE_URL="$database_url"
+else
+    # The image defaults to SQLite, which create_app refuses unless BEAR_ENV=dev.
+    set -- "$@" -e BEAR_ENV=dev
 fi
 docker rm -f "$name" >/dev/null 2>&1 || true
 docker run -d "$@" bear:ci >/dev/null

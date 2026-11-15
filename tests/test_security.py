@@ -129,6 +129,35 @@ def test_health_is_public_and_reveals_only_ok_and_time(client):
     assert response.json()["ok"] is True
 
 
+def test_ready_is_public_and_checks_the_database(client):
+    response = client.get("/ready")
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
+def test_ready_returns_503_when_the_database_is_down_and_health_does_not(client, monkeypatch):
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(client.app.state.store.engine, "connect", boom)
+    response = client.get("/ready")
+    assert response.status_code == 503
+    assert "connection refused" not in response.text
+    assert client.get("/health").status_code == 200
+    assert client.get("/health").json()["ok"] is True
+
+
+def test_sqlite_is_rejected_outside_dev(make_client, monkeypatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    with pytest.raises(RuntimeError, match="SQLite is only allowed when BEAR_ENV=dev"):
+        make_client(BEAR_ENV="production")
+
+
+def test_sqlite_is_allowed_in_dev(make_client, monkeypatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    assert make_client(BEAR_ENV="dev").get("/health").status_code == 200
+
+
 def test_legacy_shop_env_vars_are_ignored(make_client):
     client = make_client(SHOP_NAME="Env Demo Shop", SHOP_TZ="UTC")
     assert "Env Demo Shop" not in client.get("/admin", auth=ADMIN_AUTH).text

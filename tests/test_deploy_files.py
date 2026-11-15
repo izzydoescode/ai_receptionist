@@ -135,3 +135,22 @@ def test_deploy_doc_never_contains_a_literal_secret_value():
     for name in ["TOOL_SECRET", "INIT_WEBHOOK_SECRET", "ADMIN_PASSWORD"]:
         for value in re.findall(rf"\b{name}=(\S+)", doc):
             assert value.startswith(("$", "<", '"$')), f"{name}={value}"
+
+
+def test_deploy_doc_prints_secrets_then_imports_them():
+    doc = read("docs/DEPLOY.md")
+    assert "save these now" in doc.lower()
+    assert "fly secrets import --stage" in doc
+
+
+def test_deploy_doc_keeps_one_machine_and_explains_the_tradeoff():
+    doc = read("docs/DEPLOY.md")
+    assert "one machine" in doc.lower()
+    assert "bluegreen" in doc.lower() or "blue-green" in doc.lower()
+    assert "volume" in doc.lower()
+
+
+def test_deploy_doc_points_monitors_at_ready_not_fly_checks():
+    doc = read("docs/DEPLOY.md")
+    assert "`/ready`" in doc
+    assert "SELECT 1" in doc or "select 1" in doc.lower()
