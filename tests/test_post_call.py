@@ -243,7 +243,6 @@ def test_logs_carry_ids_but_never_the_summary(post_client, caplog):
     assert "3055550199" not in text
 
 
-
 def test_health_answers_while_a_post_call_save_waits_on_the_write_lock(post_client):
     started = threading.Event()
     release = threading.Event()

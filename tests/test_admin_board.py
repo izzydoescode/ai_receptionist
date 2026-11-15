@@ -166,7 +166,6 @@ def test_board_makes_non_english_callback_language_and_high_urgency_stand_out(ma
     assert re.search(r'<th\b[^>]*class="[^"]*standout[^"]*"[^>]*>urgency</th>', body)
 
 
-
 def test_call_rows_with_missing_details_show_blanks(make_client):
     client = make_client(_seed=False)
     shop = client.app.state.settings.shop_id
