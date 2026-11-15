@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bear.shops import UNKNOWN_SHOP_ID, ShopConfig
+from bear.shops import UNKNOWN_SHOP_ID, ShopConfig, callback_text
 
 UNKNOWN_FIRST_MESSAGE = (
     "Thanks for calling. This is the shop's virtual assistant. Calls may be recorded. "
@@ -50,6 +50,8 @@ class DynamicVariables(_Strict):
     # Shop-local time when the call started. Used instead of {{system__time}}, which follows the
     # agent's single configured time zone and changes every turn (it also defeats prompt caching).
     call_start_local: str
+    # Callback languages the agent may promise, and the matching Kreyòl bridge line.
+    callback_text: str
 
 
 def local_time_text(now: datetime) -> str:
@@ -93,6 +95,7 @@ def shop_initiation(shop: ShopConfig, now: datetime) -> InitResponse:
             shop_timezone=shop.timezone,
             languages_text=shop.languages_text(),
             call_start_local=local_time_text(now),
+            callback_text=shop.callback_text(),
         ),
         conversation_config_override=ConfigOverride(
             agent=AgentOverride(first_message=shop.first_messages[language], language=language),
@@ -122,6 +125,7 @@ def unknown_initiation(now: datetime, timezone: ZoneInfo) -> InitResponse:
             shop_timezone=str(timezone),
             languages_text="English",
             call_start_local=local_time_text(now.astimezone(timezone)),
+            callback_text=callback_text(["en"]),
         ),
         # No voice override: the agent's default voice is used.
         conversation_config_override=ConfigOverride(

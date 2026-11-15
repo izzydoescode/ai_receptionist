@@ -18,13 +18,39 @@ SHOP_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
 UNKNOWN_SHOP_ID = "unknown"
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 # Fla. Stat. 934.03 needs every party's consent, so each greeting must say the call may be recorded.
-LANGUAGE_NAMES = {"en": "English", "es": "Spanish", "fr": "French"}
+LANGUAGE_NAMES = {"en": "English", "es": "Spanish", "fr": "French", "ht": "Haitian Creole"}
 RECORDING_NOTICES = {"en": "may be recorded", "es": "puede ser grabada", "fr": "peut être enregistré"}
 # What the agent says instead of promising a feature the shop has turned off (PLAN Task 10).
 TOW_FALLBACK_REPLY = "I've logged it and the shop will call you back as soon as possible. If you're unsafe, call 911."
 PHOTO_FALLBACK_ADVICE = (
     "Tell callers to bring photos to the estimate, or the service writer will tell them where to send them."
 )
+
+
+# What the agent says, slowly, to a caller who speaks Kreyòl (see docs/TRANSLATION_REVIEW.md).
+# It promises a Kreyòl-speaking callback only when the shop lists ht in callback_languages.
+KREYOL_BRIDGE_STAFFED = (
+    "Bonjou! Mwen pa pale Kreyòl byen. Nou ka pale franse, anglè oswa panyòl, "
+    "oswa mwen pran mesaj ou epi yon moun ki pale Kreyòl ap rele w tounen."
+)
+KREYOL_BRIDGE_UNSTAFFED = (
+    "Bonjou! Mwen pa pale Kreyòl byen. Nou ka pale franse, anglè oswa panyòl, "
+    "oswa mwen pran mesaj ou epi garaj la ap rele w tounen."
+)
+
+
+def join_names(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def callback_text(languages) -> str:
+    """Tell the agent which callback languages it may promise, plus the matching Kreyòl bridge line."""
+    bridge = KREYOL_BRIDGE_STAFFED if "ht" in languages else KREYOL_BRIDGE_UNSTAFFED
+    return (
+        f"Staff can call back in {join_names([LANGUAGE_NAMES[lang] for lang in languages])}. "
+        "Only promise a callback in one of those languages; otherwise say the shop will call back "
+        f'as soon as possible, without promising a language. Kreyòl bridge line: "{bridge}"'
+    )
 
 
 def fold(value: str) -> str:
@@ -244,8 +270,10 @@ class ShopConfig(_Frozen):
         return text
 
     def languages_text(self) -> str:
-        names = [LANGUAGE_NAMES[lang] for lang in self.languages]
-        return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+        return join_names([LANGUAGE_NAMES[lang] for lang in self.languages])
+
+    def callback_text(self) -> str:
+        return callback_text(self.callback_languages)
 
     def services_text(self) -> str:
         return ", ".join(self.services)
