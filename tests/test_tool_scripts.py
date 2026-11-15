@@ -234,6 +234,35 @@ def test_api_creator_refuses_configs_with_a_placeholder_base_url(tmp_path, fake_
     assert fake_api == []
 
 
+def test_api_creator_prints_http_detail_and_created_ids_without_the_key(generated_tools, monkeypatch, capsys):
+    import urllib.error
+
+    calls = {"n": 0}
+
+    def fake_urlopen(request, timeout=None):
+        calls["n"] += 1
+        if calls["n"] >= 3:
+            raise urllib.error.HTTPError(
+                request.full_url,
+                422,
+                "Unprocessable Entity",
+                hdrs=None,
+                fp=io.BytesIO(b'{"detail": "request_headers.X-Tool-Secret is invalid"}'),
+            )
+        return io.BytesIO(b'{"id": "tool_created_%d"}' % calls["n"])
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(SystemExit, match="422"):
+        upload(generated_tools, UPLOAD_ENV)
+    out = capsys.readouterr()
+    text = out.out + out.err
+    assert "422" in text
+    assert "request_headers.X-Tool-Secret is invalid" in text
+    assert "tool_created_1" in text
+    assert "tool_created_2" in text
+    assert DUMMY_KEY not in text
+
+
 def test_tool_descriptions_explain_ok_false():
     tools = load_script("make_tools").TOOLS
     for name, (description, _props, _required) in tools.items():
