@@ -28,9 +28,9 @@ LANGUAGES = [("book_appointment", "language"), ("request_tow", "language"), ("ta
 
 
 def snapshot(client):
-    path = client.app.state.settings.data_file
-    db = json.loads(path.read_text()) if path.exists() else {}
-    return {key: db.get(key, []) for key in COLLECTION.values()}
+    return {
+        key: client.app.state.store.board(client.app.state.settings.shop_id, 1000)[key] for key in COLLECTION.values()
+    }
 
 
 def assert_invalid(response, field, hint=None):
@@ -60,8 +60,13 @@ def accept(client, tool_headers, payloads, tool, **changes):
     assert response.status_code == 200
     result = response.json()
     assert result.get({"book_appointment": "booked", "request_tow": "logged", "take_message": "saved"}[tool]) is True
-    record = snapshot(client)[COLLECTION[tool]][-1]
+    record = snapshot(client)[COLLECTION[tool]][0]
     assert result.get("ok") is True
+    if tool == "take_message" and "vehicle" in changes:
+        # Vehicle remains accepted/validated input, but is not a messages column.
+        from main import TakeMessage
+
+        return {**record, "vehicle": TakeMessage.model_validate({**payloads[tool], **changes}).vehicle}
     return record
 
 

@@ -261,3 +261,23 @@ def test_sarif_severity_resolution(tmp_path, result, expected):
     markdown, errors = summarize([path])
     assert f"- {expected}: 1" in markdown
     assert errors == (1 if expected == "error" else 0)
+
+
+def test_postgres_workflow_contract():
+    job = workflow("tests")["jobs"]["pytest-postgres"]
+    assert 0 < job["timeout-minutes"] <= 20
+    service = job["services"]["postgres"]
+    assert service["image"] == "postgres:17"
+    assert "5432:5432" in service["ports"]
+    assert "--health-cmd" in service["options"]
+    assert "pg_isready" in service["options"]
+    assert "--health-interval" in service["options"]
+    assert "--health-retries" in service["options"]
+    assert re.fullmatch(r"postgresql\+psycopg://[^:]+:[^@]+@localhost:5432/[^?]+", job["env"]["BEAR_TEST_PG_URL"])
+    assert "python -m pytest -m pg" in commands(job)
+    assert "python -m pip install -r backend/requirements-dev.txt" in commands(job)
+    assert step(job, "actions/checkout")["with"]["persist-credentials"] is False
+    for entry in job["steps"]:
+        if "uses" in entry:
+            action, sha = entry["uses"].split("@")
+            assert sha == PINS[action][0]
