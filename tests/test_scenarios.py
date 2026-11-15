@@ -115,3 +115,23 @@ def test_spanish_scenarios_persist_language_es(path):
     if writes:
         saved = [row for rows in scenario.get("db", {}).values() for row in rows]
         assert saved and all("es" in (row.get("language"), row.get("callback_language")) for row in saved)
+
+
+PLAN_SCENARIOS = {
+    "en_status",
+    "es_status",
+    "en_book",
+    "es_book",
+    "en_book_full_slot",
+    "es_after_hours",
+    "en_tow_unsafe",
+    "es_tow_safe",
+    "en_message",
+    "es_message",
+    "en_transfer_request",
+    "en_unverified_status",
+}
+
+
+def test_every_plan_scenario_exists():
+    assert PLAN_SCENARIOS <= {path.stem for path in SCENARIOS.glob("*.yaml")}
