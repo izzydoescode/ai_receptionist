@@ -30,13 +30,14 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 
 from bear.db import check_schema, make_engine
+from bear.initiation import InitRequest, shop_initiation, unknown_initiation
 from bear.seed import DEMO_REPAIR_ORDERS
 from bear.shops import SHOP_ID_PATTERN, ShopConfig, load_shops
 from bear.store import SlotFull, Store
@@ -480,6 +481,7 @@ def create_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan, title=f"{default_shop.name} AI Receptionist tools", version="0.1.0")
     app.state.settings = settings
     app.state.shops = shops
+    shops_by_number = {shop.twilio_number: shop for shop in shops.values()}
     store = app.state.store = Store(engine, write_guard=check_deadline)
     app.add_middleware(ToolTransportMiddleware)
     app.add_middleware(
@@ -522,6 +524,12 @@ def create_app() -> FastAPI:
         if not (user_ok & password_ok):
             raise unauthorized
 
+    def check_init_secret(x_init_webhook_secret: str | None = Header(default=None)):
+        if settings.init_webhook_secret and not hmac.compare_digest(
+            (x_init_webhook_secret or "").encode("utf-8"), settings.init_webhook_secret.encode("utf-8")
+        ):
+            raise HTTPException(status_code=401, detail="bad init webhook secret")
+
     def digits(s: str | None) -> str:
         return re.sub(r"\D", "", s or "")[-10:]
 
@@ -549,6 +557,29 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health():
         return {"ok": True, "time": datetime.now(default_shop.tz).isoformat()}
+
+    @app.post("/elevenlabs/init", dependencies=[Depends(check_init_secret)])
+    async def elevenlabs_init(request: Request):
+        """Conversation-initiation webhook: pick the shop by the dialed number before the call connects."""
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > 16384:
+                raise HTTPException(status_code=413, detail="request body too large")
+        try:
+            call = InitRequest.model_validate_json(bytes(raw))
+        except ValidationError:
+            raise HTTPException(status_code=400, detail="invalid JSON body") from None
+        try:
+            number = normalize_phone(call.called_number)
+        except ValueError:
+            number = call.called_number
+        shop = shops_by_number.get(number)
+        if shop is None:
+            reply = unknown_initiation()
+        else:
+            reply = shop_initiation(shop, datetime.now(shop.tz).date())
+        return JSONResponse(reply.model_dump(exclude_none=True))
 
     @app.post("/tools/book_appointment", dependencies=[Depends(check_secret)])
     def book_appointment(req: BookAppointment):
