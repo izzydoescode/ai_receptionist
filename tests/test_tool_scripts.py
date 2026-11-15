@@ -20,7 +20,7 @@ def load_script(name):
 
 REQUIRED = {
     "book_appointment": ["customer_name", "phone", "vehicle", "service", "preferred_date", "preferred_time"],
-    "check_repair_status": [],
+    "check_repair_status": ["last_name"],
     "request_tow": ["customer_name", "phone", "vehicle", "pickup_location", "issue", "is_safe"],
     "take_message": ["caller_name", "phone", "reason"],
 }

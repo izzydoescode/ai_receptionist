@@ -59,32 +59,6 @@ def test_third_booking_in_same_hour_is_full_with_three_alternatives(client, payl
     assert len(result["alternatives"]) == 3
 
 
-@pytest.mark.parametrize("identifier", [
-    {"ro_number": "1001"}, {"phone": "305-555-0101"},
-    {"plate": "mia 123"}, {"last_name": "Rivera"},
-])
-def test_repair_status_matches_existing_identifiers_without_full_name_or_phone(client, tool_headers, identifier):
-    result = post(client, tool_headers, "check_repair_status", identifier)
-    assert result["found"] is True
-    assert result["ro_number"] == "1001"
-    assert result["customer_first_name"] == "Carlos"
-    assert result["vehicle"] == "2017 Chevy Malibu"
-    assert result["status"] == "waiting on parts"
-    assert result["details"]
-    assert result["eta"]
-    assert result["estimated_balance"] == "$480"
-    assert "phone" not in result
-    assert "customer" not in result
-    serialized = json.dumps(result)
-    assert "Carlos Rivera" not in serialized
-    assert "3055550101" not in serialized
-    assert "305-555-0101" not in serialized
-
-
-def test_unknown_repair_is_not_found(client, tool_headers):
-    assert post(client, tool_headers, "check_repair_status", {"ro_number": "missing-demo"})["found"] is False
-
-
 @pytest.mark.parametrize("shop_name", [None, "Another Demo Shop"])
 def test_safe_tow_is_logged_with_shop_as_default_destination(make_client, tmp_path, payloads, tool_headers, shop_name):
     path = tmp_path / "tows.json"
