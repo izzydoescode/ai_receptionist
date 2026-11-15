@@ -1,4 +1,5 @@
 """Task 4 deadlines must stop work before a timed-out write can persist."""
+
 import json
 import logging
 import time
@@ -49,7 +50,11 @@ def test_deadline_does_not_persist_late(make_client, monkeypatch, payloads, tool
     assert json.loads(path.read_text())[collection] == before
     assert elapsed < 0.5
     assert response.status_code == 200
-    assert response.json() == {"ok": False, "error": "timeout", "message": "Sorry, our system is slow right now. Let me take a message."}
+    assert response.json() == {
+        "ok": False,
+        "error": "timeout",
+        "message": "Sorry, our system is slow right now. Let me take a message.",
+    }
     entry = request_record(caplog, response, "POST", f"/tools/{tool}", tool)
     assert entry["error"] == "timeout"
 
@@ -79,7 +84,9 @@ def test_fast_tool_under_deadline(make_client, payloads, tool_headers):
     assert len(json.loads(client.app.state.settings.data_file.read_text())["messages"]) == 1
 
 
-@pytest.mark.parametrize("path", sorted((Path(__file__).resolve().parents[1] / "tools").glob("*.json")), ids=lambda p: p.name)
+@pytest.mark.parametrize(
+    "path", sorted((Path(__file__).resolve().parents[1] / "tools").glob("*.json")), ids=lambda p: p.name
+)
 def test_committed_tool_timeout(path):
     assert json.loads(path.read_text())["response_timeout_secs"] == 10
 

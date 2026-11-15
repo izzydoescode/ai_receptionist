@@ -18,6 +18,7 @@ def load_script(name):
         pytest.fail(f"tools/{name}.py has no main(); it is not import-safe yet")
     return importlib.import_module(name)
 
+
 REQUIRED = {
     "book_appointment": ["customer_name", "phone", "vehicle", "service", "preferred_date", "preferred_time"],
     "check_repair_status": ["last_name"],

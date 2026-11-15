@@ -7,6 +7,7 @@ and the agent reads the JSON reply back to the caller.
 Run:  uvicorn --factory main:create_app --reload --port 8000
 Expose: ngrok http 8000   (then paste https://<id>.ngrok-free.app/tools/... into each tool)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -67,28 +68,56 @@ class Settings:
         )
 
 
-OPEN_HOUR, CLOSE_HOUR = 8, 18          # Mon-Fri 8a-6p
-SAT_OPEN, SAT_CLOSE = 9, 14            # Sat 9a-2p, closed Sunday
+OPEN_HOUR, CLOSE_HOUR = 8, 18  # Mon-Fri 8a-6p
+SAT_OPEN, SAT_CLOSE = 9, 14  # Sat 9a-2p, closed Sunday
 BAYS_PER_SLOT = 2
 
 SEED = {
     "repairs": [
-        {"ro": "1001", "customer": "Carlos Rivera", "phone": "+13055550101", "plate": "MIA123",
-         "vehicle": "2017 Chevy Malibu", "status": "waiting_on_parts",
-         "note": "Front-right tire and wheel bearing. Bearing arrives tomorrow morning.",
-         "eta": "Tomorrow by 3 PM", "balance_estimate": "$480"},
-        {"ro": "1002", "customer": "Marie Jean-Baptiste", "phone": "+17865550102", "plate": "KRY456",
-         "vehicle": "2015 Toyota Camry", "status": "in_progress",
-         "note": "Rear bumper repair and paint. In the paint booth now.",
-         "eta": "Thursday end of day", "balance_estimate": "$1,250"},
-        {"ro": "1003", "customer": "Mike O'Brien", "phone": "+19545550103", "plate": "NYC789",
-         "vehicle": "2012 Ford F-150", "status": "ready_for_pickup",
-         "note": "Brakes done, pads and rotors front. Ready to go.",
-         "eta": "Ready now", "balance_estimate": "$615"},
-        {"ro": "1004", "customer": "Ana Gómez", "phone": "+13055550104", "plate": "FLA321",
-         "vehicle": "2019 Honda Civic", "status": "awaiting_approval",
-         "note": "Estimate sent for A/C compressor. Need customer approval to proceed.",
-         "eta": "1 day after approval", "balance_estimate": "$1,100"},
+        {
+            "ro": "1001",
+            "customer": "Carlos Rivera",
+            "phone": "+13055550101",
+            "plate": "MIA123",
+            "vehicle": "2017 Chevy Malibu",
+            "status": "waiting_on_parts",
+            "note": "Front-right tire and wheel bearing. Bearing arrives tomorrow morning.",
+            "eta": "Tomorrow by 3 PM",
+            "balance_estimate": "$480",
+        },
+        {
+            "ro": "1002",
+            "customer": "Marie Jean-Baptiste",
+            "phone": "+17865550102",
+            "plate": "KRY456",
+            "vehicle": "2015 Toyota Camry",
+            "status": "in_progress",
+            "note": "Rear bumper repair and paint. In the paint booth now.",
+            "eta": "Thursday end of day",
+            "balance_estimate": "$1,250",
+        },
+        {
+            "ro": "1003",
+            "customer": "Mike O'Brien",
+            "phone": "+19545550103",
+            "plate": "NYC789",
+            "vehicle": "2012 Ford F-150",
+            "status": "ready_for_pickup",
+            "note": "Brakes done, pads and rotors front. Ready to go.",
+            "eta": "Ready now",
+            "balance_estimate": "$615",
+        },
+        {
+            "ro": "1004",
+            "customer": "Ana Gómez",
+            "phone": "+13055550104",
+            "plate": "FLA321",
+            "vehicle": "2019 Honda Civic",
+            "status": "awaiting_approval",
+            "note": "Estimate sent for A/C compressor. Need customer approval to proceed.",
+            "eta": "1 day after approval",
+            "balance_estimate": "$1,100",
+        },
     ],
     "appointments": [],
     "tows": [],
@@ -270,7 +299,7 @@ class RequestLoggingMiddleware:
         start = time.monotonic()
         path, method = scope["path"], scope["method"]
         is_tool = method == "POST" and path.startswith("/tools/")
-        name = path[len("/tools/"):] if is_tool else None
+        name = path[len("/tools/") :] if is_tool else None
         headers = dict(scope["headers"])
 
         def correlation(key):
@@ -278,8 +307,12 @@ class RequestLoggingMiddleware:
             return value if _CORRELATION_ID.fullmatch(value) else None
 
         request_id = correlation(b"x-request-id") or uuid.uuid4().hex
-        entry = {"request_id": request_id, "method": method, "path": path,
-                 "tool": name if name in _TOOL_NAMES else None}
+        entry = {
+            "request_id": request_id,
+            "method": method,
+            "path": path,
+            "tool": name if name in _TOOL_NAMES else None,
+        }
         conversation_id = correlation(b"x-conversation-id")
         if conversation_id:
             entry["conversation_id"] = conversation_id
@@ -290,8 +323,9 @@ class RequestLoggingMiddleware:
             if message["type"] == "http.response.start":
                 status = message["status"]
                 message = dict(message)
-                message["headers"] = [(k, v) for k, v in message.get("headers", [])
-                                      if k.lower() != b"x-request-id"] + [(b"x-request-id", request_id.encode("ascii"))]
+                message["headers"] = [(k, v) for k, v in message.get("headers", []) if k.lower() != b"x-request-id"] + [
+                    (b"x-request-id", request_id.encode("ascii"))
+                ]
             elif message["type"] == "http.response.body" and is_tool:
                 body.extend(message.get("body", b""))
             await send(message)
@@ -306,8 +340,13 @@ class RequestLoggingMiddleware:
             except Exception as exc:
                 if not abandoned:
                     entry["exc_type"] = type(exc).__name__
-                    await JSONResponse({"ok": False, "error": "internal_error",
-                        "message": "Sorry, something went wrong on our end. Let me take a message."})(scope, receive, downstream_send)
+                    await JSONResponse(
+                        {
+                            "ok": False,
+                            "error": "internal_error",
+                            "message": "Sorry, something went wrong on our end. Let me take a message.",
+                        }
+                    )(scope, receive, downstream_send)
 
         token = _REQUEST_DEADLINE.set(start + self.deadline_seconds if is_tool else None)
         try:
@@ -315,14 +354,21 @@ class RequestLoggingMiddleware:
                 task = asyncio.create_task(run_tool())
                 # Shielding lets us return promptly even while a sync worker is running.
                 try:
-                    await asyncio.wait_for(asyncio.shield(task), max(0, start + self.deadline_seconds - time.monotonic()))
+                    await asyncio.wait_for(
+                        asyncio.shield(task), max(0, start + self.deadline_seconds - time.monotonic())
+                    )
                 except TimeoutError:
                     abandoned = True
                     task.cancel()
                     task.add_done_callback(self._consume_task)
                     body.clear()
-                    await JSONResponse({"ok": False, "error": "timeout",
-                        "message": "Sorry, our system is slow right now. Let me take a message."})(scope, receive, capture)
+                    await JSONResponse(
+                        {
+                            "ok": False,
+                            "error": "timeout",
+                            "message": "Sorry, our system is slow right now. Let me take a message.",
+                        }
+                    )(scope, receive, capture)
             else:
                 await self.app(scope, receive, capture)
         finally:
@@ -333,11 +379,22 @@ class RequestLoggingMiddleware:
                     result = json.loads(body)
                 except ValueError:
                     pass
-            entry.update(ts=datetime.now(UTC).isoformat(), level="info", event="request",
-                         status=status, latency_ms=round((time.monotonic() - start) * 1000, 1),
-                         ok=result.get("ok", 200 <= status < 300))
-            error = {401: "unauthorized", 400: "transport", 413: "transport", 415: "transport",
-                     404: "not_found", 503: "unavailable"}.get(status)
+            entry.update(
+                ts=datetime.now(UTC).isoformat(),
+                level="info",
+                event="request",
+                status=status,
+                latency_ms=round((time.monotonic() - start) * 1000, 1),
+                ok=result.get("ok", 200 <= status < 300),
+            )
+            error = {
+                401: "unauthorized",
+                400: "transport",
+                413: "transport",
+                415: "transport",
+                404: "not_found",
+                503: "unavailable",
+            }.get(status)
             if result.get("error") in {"invalid_input", "timeout", "internal_error"}:
                 error = result["error"]
                 if error == "invalid_input":
@@ -427,7 +484,6 @@ def create_app() -> FastAPI:
                     return JSONResponse(invalid_input(field, validation_message(field, error)))
         return await request_validation_exception_handler(request, exc)
 
-
     def check_secret(x_tool_secret: str | None = Header(default=None)):
         if settings.tool_secret and not hmac.compare_digest(
             (x_tool_secret or "").encode("utf-8"), settings.tool_secret.encode("utf-8")
@@ -438,7 +494,8 @@ def create_app() -> FastAPI:
         if not settings.admin_password:
             raise HTTPException(status_code=503, detail="admin disabled")
         unauthorized = HTTPException(
-            status_code=401, detail="Not authenticated",
+            status_code=401,
+            detail="Not authenticated",
             headers={"WWW-Authenticate": 'Basic realm="bear-admin"'},
         )
         try:
@@ -506,17 +563,32 @@ def create_app() -> FastAPI:
         if date.fromisoformat(req.preferred_date) > datetime.now(settings.shop_tz).date() + timedelta(days=60):
             return invalid_input("preferred_date", "I can only book up to 60 days out.")
         db = load()
-        dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(tzinfo=settings.shop_tz)
+        dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(
+            tzinfo=settings.shop_tz
+        )
         problem = slot_ok(dt) or ("That slot is full." if count_at(db, dt) >= BAYS_PER_SLOT else None)
         if problem:
-            return {"ok": True, "booked": False, "message": problem, "alternatives": next_slots(db, max(dt, datetime.now(settings.shop_tz)))}
-        appt = {"id": "A" + uuid.uuid4().hex[:6].upper(), "start": dt.isoformat(), **req.model_dump(),
-                "created": datetime.now(settings.shop_tz).isoformat()}
+            return {
+                "ok": True,
+                "booked": False,
+                "message": problem,
+                "alternatives": next_slots(db, max(dt, datetime.now(settings.shop_tz))),
+            }
+        appt = {
+            "id": "A" + uuid.uuid4().hex[:6].upper(),
+            "start": dt.isoformat(),
+            **req.model_dump(),
+            "created": datetime.now(settings.shop_tz).isoformat(),
+        }
         db["appointments"].append(appt)
         save(db)
-        return {"ok": True, "booked": True, "confirmation": appt["id"],
-                "when": dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " "),
-                "message": f"Booked {req.vehicle} for {req.service}. Bring the keys to the front desk."}
+        return {
+            "ok": True,
+            "booked": True,
+            "confirmation": appt["id"],
+            "when": dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " "),
+            "message": f"Booked {req.vehicle} for {req.service}. Bring the keys to the front desk.",
+        }
 
     @app.post("/tools/check_repair_status", dependencies=[Depends(check_secret)])
     def check_repair_status(req: RepairStatus):
@@ -541,16 +613,28 @@ def create_app() -> FastAPI:
         if len(hits) != 1:
             return REPAIR_STATUS_FAILURE
         r = hits[0]
-        return {"ok": True, "found": True, "ro_number": r["ro"], "customer_first_name": r["customer"].split()[0],
-                "vehicle": r["vehicle"], "status": STATUS_TEXT.get(r["status"], r["status"]),
-                "details": r["note"], "eta": r["eta"], "estimated_balance": r["balance_estimate"]}
+        return {
+            "ok": True,
+            "found": True,
+            "ro_number": r["ro"],
+            "customer_first_name": r["customer"].split()[0],
+            "vehicle": r["vehicle"],
+            "status": STATUS_TEXT.get(r["status"], r["status"]),
+            "details": r["note"],
+            "eta": r["eta"],
+            "estimated_balance": r["balance_estimate"],
+        }
 
     @app.post("/tools/request_tow", dependencies=[Depends(check_secret)])
     def request_tow(req: TowRequest):
         db = load()
-        tow = {"id": "T" + uuid.uuid4().hex[:6].upper(), **req.model_dump(),
-               "destination": req.destination or settings.shop_name, "created": datetime.now(settings.shop_tz).isoformat(),
-               "status": "dispatch_requested"}
+        tow = {
+            "id": "T" + uuid.uuid4().hex[:6].upper(),
+            **req.model_dump(),
+            "destination": req.destination or settings.shop_name,
+            "created": datetime.now(settings.shop_tz).isoformat(),
+            "status": "dispatch_requested",
+        }
         db["tows"].append(tow)
         save(db)
         msg = "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
@@ -561,28 +645,40 @@ def create_app() -> FastAPI:
     @app.post("/tools/take_message", dependencies=[Depends(check_secret)])
     def take_message(req: TakeMessage):
         db = load()
-        m = {"id": "M" + uuid.uuid4().hex[:6].upper(), **req.model_dump(), "created": datetime.now(settings.shop_tz).isoformat()}
+        m = {
+            "id": "M" + uuid.uuid4().hex[:6].upper(),
+            **req.model_dump(),
+            "created": datetime.now(settings.shop_tz).isoformat(),
+        }
         db["messages"].append(m)
         save(db)
-        lang = {"ht": " A Creole-speaking team member will call back.", "es": " Alguien que habla español le llamará."}.get(req.callback_language, "")
+        lang = {
+            "ht": " A Creole-speaking team member will call back.",
+            "es": " Alguien que habla español le llamará.",
+        }.get(req.callback_language, "")
         return {"ok": True, "saved": True, "ticket": m["id"], "message": "Message saved for the service writer." + lang}
 
     @app.get("/admin", response_class=HTMLResponse, dependencies=[Depends(check_admin)])
     def admin():
         """Live board for the demo: refresh while the call is happening."""
         db = load()
+
         def table(rows, cols):
             h = "".join(f"<th>{html.escape(str(c), quote=True)}</th>" for c in cols)
-            b = "".join("<tr>" + "".join(f"<td>{html.escape(str(r.get(c,'')), quote=True)}</td>" for c in cols) + "</tr>" for r in reversed(rows))
+            b = "".join(
+                "<tr>" + "".join(f"<td>{html.escape(str(r.get(c, '')), quote=True)}</td>" for c in cols) + "</tr>"
+                for r in reversed(rows)
+            )
             return f"<table><tr>{h}</tr>{b}</table>"
+
         return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(settings.shop_name), quote=True)} board</title>
     <style>body{{font-family:system-ui;margin:24px}}table{{border-collapse:collapse;margin-bottom:24px}}
     td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}</style></head><body>
     <h1>{html.escape(str(settings.shop_name), quote=True)}: AI receptionist live board</h1>
-    <h2>Appointments</h2>{table(db['appointments'], ['id','start','customer_name','phone','vehicle','service','language'])}
-    <h2>Tow requests</h2>{table(db['tows'], ['id','created','customer_name','phone','pickup_location','issue','is_safe'])}
-    <h2>Messages</h2>{table(db['messages'], ['id','created','caller_name','phone','reason','urgency','callback_language'])}
-    <h2>Open repair orders</h2>{table(db['repairs'], ['ro','customer','vehicle','status','eta'])}
+    <h2>Appointments</h2>{table(db["appointments"], ["id", "start", "customer_name", "phone", "vehicle", "service", "language"])}
+    <h2>Tow requests</h2>{table(db["tows"], ["id", "created", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
+    <h2>Messages</h2>{table(db["messages"], ["id", "created", "caller_name", "phone", "reason", "urgency", "callback_language"])}
+    <h2>Open repair orders</h2>{table(db["repairs"], ["ro", "customer", "vehicle", "status", "eta"])}
     </body></html>"""
 
     @app.post("/admin/reset")

@@ -96,11 +96,14 @@ def test_authenticated_dev_reset_restores_seed(make_client, payloads, tool_heade
     assert booking["confirmation"] not in client.get("/admin", auth=ADMIN_AUTH).text
 
 
-@pytest.mark.parametrize("tool,field,raw,escaped", [
-    ("take_message", "caller_name", "<script>alert(1)</script>", "&lt;script&gt;alert(1)&lt;/script&gt;"),
-    ("book_appointment", "vehicle", "<img src=x onerror=alert(1)>", "&lt;img src=x onerror=alert(1)&gt;"),
-    ("request_tow", "pickup_location", "<img src=x onerror=alert(1)>", "&lt;img src=x onerror=alert(1)&gt;"),
-])
+@pytest.mark.parametrize(
+    "tool,field,raw,escaped",
+    [
+        ("take_message", "caller_name", "<script>alert(1)</script>", "&lt;script&gt;alert(1)&lt;/script&gt;"),
+        ("book_appointment", "vehicle", "<img src=x onerror=alert(1)>", "&lt;img src=x onerror=alert(1)&gt;"),
+        ("request_tow", "pickup_location", "<img src=x onerror=alert(1)>", "&lt;img src=x onerror=alert(1)&gt;"),
+    ],
+)
 def test_admin_escapes_dynamic_tool_values(client, payloads, tool_headers, tool, field, raw, escaped):
     payload = {**payloads[tool], field: raw}
     assert client.post(f"/tools/{tool}", json=payload, headers=tool_headers).status_code == 200
@@ -129,6 +132,7 @@ def test_health_is_public_and_reveals_only_ok_and_time(client):
 
 def test_shop_timezone_is_read_at_app_creation(make_client):
     from datetime import datetime
+
     utc = make_client(SHOP_TZ="UTC")
     ny = make_client(SHOP_TZ="America/New_York")
     assert datetime.fromisoformat(utc.get("/health").json()["time"]).utcoffset().total_seconds() == 0
@@ -154,16 +158,30 @@ def test_apps_keep_their_own_secret_and_data_file(make_client, payloads, tmp_pat
     other_secret = "y" * 40
     first = make_client(DATA_FILE=first_path)
     second = make_client(DATA_FILE=second_path, TOOL_SECRET=other_secret)
-    assert first.post("/tools/take_message", json=payloads["take_message"], headers={"X-Tool-Secret": SECRET}).status_code == 200
-    assert second.post("/tools/take_message", json=payloads["take_message"], headers={"X-Tool-Secret": SECRET}).status_code == 401
-    assert second.post("/tools/check_repair_status", json={"last_name": "Rivera", "ro_number": "1001"}, headers={"X-Tool-Secret": other_secret}).status_code == 200
+    assert (
+        first.post("/tools/take_message", json=payloads["take_message"], headers={"X-Tool-Secret": SECRET}).status_code
+        == 200
+    )
+    assert (
+        second.post("/tools/take_message", json=payloads["take_message"], headers={"X-Tool-Secret": SECRET}).status_code
+        == 401
+    )
+    assert (
+        second.post(
+            "/tools/check_repair_status",
+            json={"last_name": "Rivera", "ro_number": "1001"},
+            headers={"X-Tool-Secret": other_secret},
+        ).status_code
+        == 200
+    )
     assert len(json.loads(first_path.read_text())["messages"]) == 1
     assert json.loads(second_path.read_text())["messages"] == []
 
 
 def test_non_ascii_tool_secret_header_is_rejected_not_500(client, payloads):
     response = client.post(
-        "/tools/take_message", json=payloads["take_message"],
+        "/tools/take_message",
+        json=payloads["take_message"],
         headers={"X-Tool-Secret": "s\u00e9cret".encode("latin-1")},
     )
     assert response.status_code == 401
