@@ -2,7 +2,7 @@
   "type": "webhook",
   "name": "request_tow",
   "description": "Log a tow/roadside request for the dispatcher. Use for breakdowns, accidents, cars that won't start or are unsafe to drive. Ask about safety FIRST.",
-  "response_timeout_secs": 20,
+  "response_timeout_secs": 10,
   "api_schema": {
     "url": "https://YOUR-NGROK-ID.ngrok-free.app/tools/request_tow",
     "method": "POST",

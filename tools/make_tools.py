@@ -48,7 +48,7 @@ def main(argv=None, out_dir=None):
     paths = []
     for name, (desc, props, req) in TOOLS.items():
         cfg = {"type": "webhook", "name": name, "description": desc,
-               "response_timeout_secs": 20,
+               "response_timeout_secs": 10,
                "api_schema": {"url": f"{base}/tools/{name}", "method": "POST",
                               "request_headers": {"Content-Type": "application/json"},
                               "request_body_schema": {"type": "object", "description": f"Arguments for {name}",

@@ -2,7 +2,7 @@
   "type": "webhook",
   "name": "book_appointment",
   "description": "Book a drop-off appointment at the shop. Call ONLY after you have collected and read back name, phone, vehicle, service, date and time. If it returns booked=false, offer the alternatives it gives.",
-  "response_timeout_secs": 20,
+  "response_timeout_secs": 10,
   "api_schema": {
     "url": "https://YOUR-NGROK-ID.ngrok-free.app/tools/book_appointment",
     "method": "POST",

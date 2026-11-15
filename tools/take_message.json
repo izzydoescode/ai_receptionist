@@ -2,7 +2,7 @@
   "type": "webhook",
   "name": "take_message",
   "description": "Leave a message for the service writer/owner: after hours, estimate requests needing a human, unknown questions, failed transfers, or Haitian Creole callers who want a Creole-speaking callback.",
-  "response_timeout_secs": 20,
+  "response_timeout_secs": 10,
   "api_schema": {
     "url": "https://YOUR-NGROK-ID.ngrok-free.app/tools/take_message",
     "method": "POST",
