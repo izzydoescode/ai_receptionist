@@ -60,9 +60,11 @@ def test_exact_board_rows(make_client):
                 "2026-11-16 10:00 EST",
                 "Zelda Quixote",
                 "+13055550199",
+                "",
                 "Private callback",
                 "normal",
                 "en",
+                "",
             )
         ],
         [cells("9001", "Zelda Quixote", "Demo sedan", "ready", "Tomorrow")],
