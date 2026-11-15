@@ -125,6 +125,9 @@ def test_unknown_number_calls_cannot_use_other_tools(two_shops, payloads, tool_h
     result = call(two_shops, tool_headers, tool, {**payloads[tool], "shop_id": "unknown"})
     assert result["ok"] is False
     assert result["error"] == "unknown_shop"
-    assert "take a message" in result["message"]
+    assert (
+        result["message"]
+        == "I can't actually do that on this line. Offer to take a message so someone can call the caller back."
+    )
     assert not any(board(two_shops, "unknown").values())
     assert len(audit(two_shops)) == audit_before

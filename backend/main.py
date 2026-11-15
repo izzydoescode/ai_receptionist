@@ -102,7 +102,7 @@ STAFFED_CALLBACK = {
 UNKNOWN_SHOP = {
     "ok": False,
     "error": "unknown_shop",
-    "message": "I can't do that on this line. Offer to take a message so someone can call back.",
+    "message": "I can't actually do that on this line. Offer to take a message so someone can call the caller back.",
 }
 
 REPAIR_STATUS_NEEDS = {
@@ -222,9 +222,9 @@ def invalid_input(field, message):
 
 def validation_message(field, error):
     hints = {
-        "phone": "I need a 10-digit phone number with area code.",
-        "preferred_date": "I need the date as year-month-day, like 2026-11-20.",
-        "preferred_time": "I need the time in 24-hour format, like 09:30 or 14:00.",
+        "phone": "I'll need a 10-digit phone number, area code and all.",
+        "preferred_date": "I'll need the date as year-month-day, like 2026-11-20.",
+        "preferred_time": "I'll need the time in 24-hour format, like 09:30 or 14:00.",
         "language": "Language must be en, es, fr or ht.",
         "callback_language": "Language must be en, es, fr or ht.",
         "urgency": "Urgency must be low, normal or high.",
@@ -323,7 +323,7 @@ class RequestLoggingMiddleware:
                         {
                             "ok": False,
                             "error": "internal_error",
-                            "message": "Sorry, something went wrong on our end. Let me take a message.",
+                            "message": "Sorry about that. Something went wrong on our end. Let me take a message so someone can call you back.",
                         }
                     )(scope, receive, downstream_send)
 
@@ -345,7 +345,7 @@ class RequestLoggingMiddleware:
                         {
                             "ok": False,
                             "error": "timeout",
-                            "message": "Sorry, our system is slow right now. Let me take a message.",
+                            "message": "Sorry about the wait. Our system's running a little slow right now. Let me take a message so someone can call you back.",
                         }
                     )(scope, receive, capture)
             else:

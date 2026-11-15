@@ -51,7 +51,7 @@ def test_deadline_does_not_persist_late(make_client, monkeypatch, payloads, tool
     assert response.json() == {
         "ok": False,
         "error": "timeout",
-        "message": "Sorry, our system is slow right now. Let me take a message.",
+        "message": "Sorry about the wait. Our system's running a little slow right now. Let me take a message so someone can call you back.",
     }
     entry = request_record(caplog, response, "POST", f"/tools/{tool}", tool)
     assert entry["error"] == "timeout"

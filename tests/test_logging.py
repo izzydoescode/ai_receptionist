@@ -230,7 +230,7 @@ def test_unhandled_error_is_safe(client, payloads, tool_headers, monkeypatch, ca
     assert response.json() == {
         "ok": False,
         "error": "internal_error",
-        "message": "Sorry, something went wrong on our end. Let me take a message.",
+        "message": "Sorry about that. Something went wrong on our end. Let me take a message so someone can call you back.",
     }
     assert_private(caplog)
     entry = request_record(caplog, response, "POST", "/tools/take_message", "take_message")
