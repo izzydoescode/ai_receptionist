@@ -154,3 +154,14 @@ def test_deploy_doc_points_monitors_at_ready_not_fly_checks():
     doc = read("docs/DEPLOY.md")
     assert "`/ready`" in doc
     assert "SELECT 1" in doc or "select 1" in doc.lower()
+
+
+def test_image_installs_from_the_hashed_runtime_lock():
+    copies = args_of("COPY")
+    assert any("backend/requirements.lock" in item for item in copies)
+    assert not any(re.search(r"backend/requirements\.txt\b", item) for item in copies)
+    installs = [item for item in args_of("RUN") if "pip install" in item]
+    assert installs
+    for item in installs:
+        assert "--require-hashes" in item
+        assert "requirements.lock" in item

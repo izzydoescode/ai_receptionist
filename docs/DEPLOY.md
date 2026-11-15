@@ -15,6 +15,7 @@ Sources: https://docs.fly.io/about/pricing, https://docs.fly.io/about/free-waive
 
 ## The image
 `Dockerfile` builds a two-stage image on `python:3.13-slim-trixie`, pinned by digest; Dependabot proposes digest bumps. The image:
+- installs runtime deps from `backend/requirements.lock` with `pip install --require-hashes`
 - runs as the non-root user `bear` (uid 10001)
 - serves `uvicorn --factory main:create_app --proxy-headers` on port **8080**
 - has a `HEALTHCHECK` that probes `/health`
