@@ -98,8 +98,6 @@ uvicorn --factory main:create_app --reload --port 8000 --no-access-log
 | `DATABASE_URL` | no | `sqlite:///./vicecity.db` | SQLAlchemy database URL, relative to the working directory for SQLite. Never log it. |
 | `SHOP_ID` | no | `vice-city-auto` | Default shop used by tools; lowercase letters, digits and hyphens, starting with a letter or digit, up to 64 characters. It must have a file in `SHOPS_DIR`. |
 | `SHOPS_DIR` | no | the repo's `shops/` | Folder with one `<shop_id>.yaml` per shop. Every file is validated at startup and any problem stops the app. |
-| `SHOP_NAME` | no | `Vice City Auto` | Shop name shown on the board and used as the default tow destination. |
-| `SHOP_TZ` | no | `America/New_York` | Shop time zone for slots and timestamps. |
 
 Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `GET /admin` (HTTP Basic), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or RO number** on the ticket.
 

@@ -29,7 +29,6 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
-from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.exception_handlers import request_validation_exception_handler
@@ -55,8 +54,6 @@ class Settings:
     shops_dir: str = str(DEFAULT_SHOPS_DIR)
     tool_deadline_ms: int = 4000
     admin_user: str = "admin"
-    shop_name: str = "Vice City Auto"
-    shop_tz: ZoneInfo = ZoneInfo("America/New_York")
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -75,8 +72,6 @@ class Settings:
             database_url=os.getenv("DATABASE_URL", "sqlite:///./vicecity.db"),
             shop_id=os.getenv("SHOP_ID", "vice-city-auto"),
             shops_dir=os.getenv("SHOPS_DIR") or str(DEFAULT_SHOPS_DIR),
-            shop_name=os.getenv("SHOP_NAME", "Vice City Auto"),
-            shop_tz=ZoneInfo(os.getenv("SHOP_TZ", "America/New_York")),
         )
 
 
@@ -435,6 +430,7 @@ def create_app() -> FastAPI:
     shops = load_shops(settings.shops_dir)
     if settings.shop_id not in shops:
         raise RuntimeError(f"SHOP_ID {settings.shop_id} has no shop file in SHOPS_DIR")
+    default_shop = shops[settings.shop_id]
     engine = None
     try:
         engine = make_engine(settings.database_url)
@@ -456,7 +452,7 @@ def create_app() -> FastAPI:
         finally:
             engine.dispose()
 
-    app = FastAPI(lifespan=lifespan, title=f"{settings.shop_name} AI Receptionist tools", version="0.1.0")
+    app = FastAPI(lifespan=lifespan, title=f"{default_shop.name} AI Receptionist tools", version="0.1.0")
     app.state.settings = settings
     app.state.shops = shops
     store = app.state.store = Store(engine, write_guard=check_deadline)
@@ -510,7 +506,7 @@ def create_app() -> FastAPI:
         o, c = (SAT_OPEN, SAT_CLOSE) if wd == 5 else (OPEN_HOUR, CLOSE_HOUR)
         if not (o <= dt.hour < c):
             return f"That day we take drop-offs between {o}:00 and {c}:00."
-        if dt < datetime.now(settings.shop_tz):
+        if dt < datetime.now(default_shop.tz):
             return "That time already passed."
         return None
 
@@ -528,14 +524,14 @@ def create_app() -> FastAPI:
     # ---------- endpoints ----------
     @app.get("/health")
     def health():
-        return {"ok": True, "time": datetime.now(settings.shop_tz).isoformat()}
+        return {"ok": True, "time": datetime.now(default_shop.tz).isoformat()}
 
     @app.post("/tools/book_appointment", dependencies=[Depends(check_secret)])
     def book_appointment(req: BookAppointment):
-        if date.fromisoformat(req.preferred_date) > datetime.now(settings.shop_tz).date() + timedelta(days=60):
+        if date.fromisoformat(req.preferred_date) > datetime.now(default_shop.tz).date() + timedelta(days=60):
             return invalid_input("preferred_date", "I can only book up to 60 days out.")
         dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(
-            tzinfo=settings.shop_tz
+            tzinfo=default_shop.tz
         )
         problem = slot_ok(dt)
         if problem is None:
@@ -551,7 +547,7 @@ def create_app() -> FastAPI:
                 "ok": True,
                 "booked": False,
                 "message": problem,
-                "alternatives": next_slots(max(dt, datetime.now(settings.shop_tz))),
+                "alternatives": next_slots(max(dt, datetime.now(default_shop.tz))),
             }
         return {
             "ok": True,
@@ -602,7 +598,7 @@ def create_app() -> FastAPI:
     @app.post("/tools/request_tow", dependencies=[Depends(check_secret)])
     def request_tow(req: TowRequest):
         fields = req.model_dump()
-        fields["destination"] = req.destination or settings.shop_name
+        fields["destination"] = req.destination or default_shop.name
         tow = store.create_tow(settings.shop_id, **fields, status="dispatch_requested")
         msg = "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
         if not req.is_safe:
@@ -633,7 +629,7 @@ def create_app() -> FastAPI:
 
         def display(value):
             if isinstance(value, datetime):
-                return value.astimezone(settings.shop_tz).strftime("%Y-%m-%d %H:%M %Z")
+                return value.astimezone(default_shop.tz).strftime("%Y-%m-%d %H:%M %Z")
             return str(value)
 
         def table(rows, cols):
@@ -644,10 +640,10 @@ def create_app() -> FastAPI:
             )
             return f"<table><tr>{h}</tr>{b}</table>"
 
-        return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(settings.shop_name), quote=True)} board</title>
+        return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(default_shop.name), quote=True)} board</title>
     <style>body{{font-family:system-ui;margin:24px}}table{{border-collapse:collapse;margin-bottom:24px}}
     td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}</style></head><body>
-    <h1>{html.escape(str(settings.shop_name), quote=True)}: AI receptionist live board</h1>
+    <h1>{html.escape(str(default_shop.name), quote=True)}: AI receptionist live board</h1>
     <h2>Appointments</h2>{table(db["appointments"], ["public_id", "slot_start", "customer_name", "phone", "vehicle", "service", "language"])}
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
     <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "reason", "urgency", "callback_language"])}

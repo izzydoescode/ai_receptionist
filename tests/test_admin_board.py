@@ -22,7 +22,7 @@ def cells(*values):
 
 
 def test_exact_board_rows(make_client):
-    client = make_client(_seed=False, SHOP_TZ="America/New_York")
+    client = make_client(_seed=False)
     store = client.app.state.store
     shop = client.app.state.settings.shop_id
     appointment = store.book_appointment(shop, SLOT, 2, **APPOINTMENT, created_at=FIXED)

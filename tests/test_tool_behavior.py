@@ -62,7 +62,7 @@ def test_third_booking_in_same_hour_is_full_with_three_alternatives(client, payl
 
 @pytest.mark.parametrize("shop_name", [None, "Another Demo Shop"])
 def test_safe_tow_is_logged_with_shop_as_default_destination(make_client, tmp_path, payloads, tool_headers, shop_name):
-    client = make_client(SHOP_NAME=shop_name)
+    client = make_client(_shops=[{"name": shop_name}] if shop_name else ())
     result = post(client, tool_headers, "request_tow", payloads["request_tow"])
     assert result["logged"] is True
     assert result["ticket"].startswith("T")

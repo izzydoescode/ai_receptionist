@@ -1,5 +1,6 @@
 import logging
 import runpy
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -111,9 +112,9 @@ def test_admin_escapes_dynamic_tool_values(client, payloads, tool_headers, tool,
     assert "<script>alert(1)" not in body
 
 
-def test_shop_name_is_read_at_call_time_and_escaped_in_title_and_heading(make_client):
-    first = make_client(SHOP_NAME="First Demo Shop")
-    second = make_client(SHOP_NAME="<b>X</b>")
+def test_shop_name_comes_from_shop_config_and_is_escaped_in_title_and_heading(make_client):
+    first = make_client(_shops=[{"name": "First Demo Shop"}])
+    second = make_client(_shops=[{"name": "<b>X</b>"}])
     assert "First Demo Shop" in first.get("/admin", auth=ADMIN_AUTH).text
     body = second.get("/admin", auth=ADMIN_AUTH).text
     assert "<title>&lt;b&gt;X&lt;/b&gt; board</title>" in body
@@ -128,11 +129,16 @@ def test_health_is_public_and_reveals_only_ok_and_time(client):
     assert response.json()["ok"] is True
 
 
-def test_shop_timezone_is_read_at_app_creation(make_client):
-    from datetime import datetime
+def test_legacy_shop_env_vars_are_ignored(make_client):
+    client = make_client(SHOP_NAME="Env Demo Shop", SHOP_TZ="UTC")
+    assert "Env Demo Shop" not in client.get("/admin", auth=ADMIN_AUTH).text
+    offset = datetime.fromisoformat(client.get("/health").json()["time"]).utcoffset().total_seconds()
+    assert offset in {-14400, -18000}
 
-    utc = make_client(SHOP_TZ="UTC")
-    ny = make_client(SHOP_TZ="America/New_York")
+
+def test_shop_timezone_comes_from_shop_config(make_client):
+    utc = make_client(_shops=[{"timezone": "UTC"}])
+    ny = make_client(_shops=[{"timezone": "America/New_York"}])
     assert datetime.fromisoformat(utc.get("/health").json()["time"]).utcoffset().total_seconds() == 0
     assert datetime.fromisoformat(ny.get("/health").json()["time"]).utcoffset().total_seconds() in {-14400, -18000}
 
