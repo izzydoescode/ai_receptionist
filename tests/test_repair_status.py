@@ -89,8 +89,8 @@ def test_verification_failure_returns_generic_response(client, tool_headers, pay
 def duplicate_client(make_client, tmp_path):
     # Independent seed data: ambiguity must fail even when both factors match.
     repair = {
-        "ro": "9001",
-        "customer": "Demo Rivera",
+        "ro_number": "9001",
+        "customer_name": "Demo Rivera",
         "phone": "+13055550101",
         "plate": "DEMO1",
         "vehicle": "2017 Demo Sedan",
@@ -99,18 +99,14 @@ def duplicate_client(make_client, tmp_path):
         "eta": "Tomorrow",
         "balance_estimate": "$100",
     }
-    path = tmp_path / "duplicate-repairs.json"
-    path.write_text(
-        json.dumps(
-            {
-                "repairs": [repair, {**repair, "ro": "9002", "customer": "Other Rivera", "plate": "DEMO2"}],
-                "appointments": [],
-                "tows": [],
-                "messages": [],
-            }
-        )
+    client = make_client(_seed=False)
+    store = client.app.state.store
+    shop = client.app.state.settings.shop_id
+    store.upsert_repair_order(shop, **repair)
+    store.upsert_repair_order(
+        shop, **{**repair, "ro_number": "9002", "customer_name": "Other Rivera", "plate": "DEMO2"}
     )
-    return make_client(DATA_FILE=path)
+    return client
 
 
 def test_duplicate_matches_fail_verification(duplicate_client, tool_headers):
@@ -206,3 +202,31 @@ def test_repair_status_prompt_requires_last_name_without_plate():
     flow = prompt.split("## 2. Repair status", 1)[1].split("## 3.", 1)[0].lower()
     assert "plate" not in flow
     assert "last name" in flow
+
+
+@pytest.mark.parametrize(
+    "payload,outcome",
+    [
+        ({"last_name": "Rivera", "ro_number": "1001"}, "verified"),
+        ({"last_name": "Unknown", "ro_number": "1001"}, "failed"),
+        ({"ro_number": "1001"}, "needs_info"),
+    ],
+)
+def test_lookup_records_private_audit(client, tool_headers, payload, outcome):
+    import os
+
+    from bear.db import make_engine
+    from test_store import audit_rows
+
+    lookup(client, tool_headers, payload)
+    engine = make_engine(os.environ["DATABASE_URL"])
+    try:
+        events = audit_rows(engine)
+    finally:
+        engine.dispose()
+    assert len(events) == 1
+    event = events[0]
+    assert event["shop_id"] == client.app.state.settings.shop_id
+    assert event["event"] == "repair_status.lookup"
+    assert event["outcome"] == outcome
+    assert all(value not in str(column) for column in event.values() for value in ("Rivera", "Unknown", "+13055550101"))

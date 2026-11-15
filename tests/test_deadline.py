@@ -9,7 +9,7 @@ import pytest
 
 import main
 import make_tools
-from conftest import ADMIN_AUTH
+from conftest import ADMIN_AUTH, rows
 from test_logging import request_record
 
 
@@ -29,25 +29,24 @@ def test_default_deadline_allows_request(make_client, monkeypatch, payloads, too
 @pytest.mark.parametrize("tool,collection", [("take_message", "messages"), ("book_appointment", "appointments")])
 def test_deadline_does_not_persist_late(make_client, monkeypatch, payloads, tool_headers, caplog, tool, collection):
     client = make_client(TOOL_DEADLINE_MS="100")
-    path = client.app.state.settings.data_file
-    original = main.read_db
-    # Seed before patching so file creation cannot be mistaken for a late write.
-    assert client.get("/admin", auth=ADMIN_AUTH).status_code == 200
-    before = json.loads(path.read_text())[collection]
+    store = client.app.state.store
+    method = "create_message" if tool == "take_message" else "book_appointment"
+    original = getattr(store, method)
+    before = rows(client, collection)
 
-    def slow_read(path):
+    def slow_write(*args, **kwargs):
         time.sleep(0.6)
-        return original(path)
+        return original(*args, **kwargs)
 
-    monkeypatch.setattr(main, "read_db", slow_read)
-    caplog.clear()  # drop the seeding request's own log record
+    monkeypatch.setattr(store, method, slow_write)
+    caplog.clear()
     with caplog.at_level(logging.DEBUG):
         start = time.monotonic()
         response = client.post(f"/tools/{tool}", json=payloads[tool], headers=tool_headers)
         elapsed = time.monotonic() - start
-        # Check the eventual file even if the immediate response contract is broken.
+        # Check eventual storage even if the immediate response contract is broken.
         time.sleep(0.8)
-    assert json.loads(path.read_text())[collection] == before
+    assert rows(client, collection) == before
     assert elapsed < 0.5
     assert response.status_code == 200
     assert response.json() == {
@@ -61,15 +60,15 @@ def test_deadline_does_not_persist_late(make_client, monkeypatch, payloads, tool
 
 def test_health_and_admin_have_no_tool_deadline(make_client, monkeypatch):
     client = make_client(TOOL_DEADLINE_MS="100")
-    original = main.read_db
+    original = client.app.state.store.board
     calls = []
 
-    def slow_read(path):
-        calls.append(path)
+    def slow_read(*args, **kwargs):
+        calls.append(args)
         time.sleep(0.3)
-        return original(path)
+        return original(*args, **kwargs)
 
-    monkeypatch.setattr(main, "read_db", slow_read)
+    monkeypatch.setattr(client.app.state.store, "board", slow_read)
     assert client.get("/health").status_code == 200
     start = time.monotonic()
     assert client.get("/admin", auth=ADMIN_AUTH).status_code == 200
@@ -81,7 +80,7 @@ def test_fast_tool_under_deadline(make_client, payloads, tool_headers):
     client = make_client(TOOL_DEADLINE_MS="100")
     response = client.post("/tools/take_message", json=payloads["take_message"], headers=tool_headers)
     assert response.status_code == 200 and response.json()["saved"] is True
-    assert len(json.loads(client.app.state.settings.data_file.read_text())["messages"]) == 1
+    assert len(rows(client, "messages")) == 1
 
 
 @pytest.mark.parametrize(
@@ -130,9 +129,8 @@ def test_write_cycle_bails_when_the_request_is_no_longer_open(
     make_client, monkeypatch, payloads, tool_headers, tool, flag
 ):
     client = make_client()
-    path = client.app.state.settings.data_file
-    assert client.get("/admin", auth=ADMIN_AUTH).status_code == 200
-    before = path.read_text()
+    collections = ("messages", "tows", "appointments")
+    before = {name: rows(client, name) for name in collections}
     monkeypatch.setattr(main, "write_is_open", lambda: False)
     response = client.post(f"/tools/{tool}", json=payloads[tool], headers=tool_headers)
     assert response.status_code == 200
@@ -142,4 +140,4 @@ def test_write_cycle_bails_when_the_request_is_no_longer_open(
         "message": "Sorry, something went wrong on our end. Let me take a message.",
     }
     assert flag not in response.json()
-    assert path.read_text() == before
+    assert {name: rows(client, name) for name in collections} == before

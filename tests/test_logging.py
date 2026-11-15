@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-import main
 from conftest import ADMIN_AUTH, SECRET
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -276,10 +275,10 @@ def test_unauthenticated_bad_transport_still_returns_401(client, payloads, caplo
 
 
 def test_unhandled_error_is_safe(client, payloads, tool_headers, monkeypatch, caplog):
-    def broken_read(path):
+    def broken_read(*args, **kwargs):
         raise RuntimeError("Zelda Quixote 3055550199")
 
-    monkeypatch.setattr(main, "read_db", broken_read)
+    monkeypatch.setattr(client.app.state.store, "create_message", broken_read)
     with caplog.at_level(logging.DEBUG):
         response = client.post("/tools/take_message", json=payloads["take_message"], headers=tool_headers)
     assert response.status_code == 200
@@ -305,14 +304,14 @@ def test_request_json_written_to_stdout(tmp_path):
         **os.environ,
         "PYTHONPATH": str(ROOT / "backend"),
         "TOOL_SECRET": "x" * 40,
-        "DATA_FILE": str(tmp_path / "stdout-data.json"),
+        "DATABASE_URL": f"sqlite:///{tmp_path}/stdout.db",
     }
     env.pop("TOOL_DEADLINE_MS", None)
     result = subprocess.run(
         [
             sys.executable,
             "-c",
-            "from main import create_app; from fastapi.testclient import TestClient; c = TestClient(create_app()); assert c.get('/health').status_code == 200; c.close()",
+            "import os; from bear.db import create_schema, make_engine; create_schema(make_engine(os.environ['DATABASE_URL'])); from main import create_app; from fastapi.testclient import TestClient; c = TestClient(create_app()); assert c.get('/health').status_code == 200; c.close()",
         ],
         cwd=ROOT,
         env=env,
@@ -326,5 +325,6 @@ def test_request_json_written_to_stdout(tmp_path):
         try:
             entries.append(json.loads(line))
         except ValueError:
-            pass
+            # Non-JSON lines (uvicorn/other output) are ignored.
+            continue
     assert any(isinstance(e, dict) and e.get("event") == "request" and e.get("path") == "/health" for e in entries)

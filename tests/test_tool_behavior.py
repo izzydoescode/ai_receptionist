@@ -1,10 +1,9 @@
-import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from conftest import future_day
+from conftest import future_day, rows
 
 
 def post(client, tool_headers, tool, payload):
@@ -15,14 +14,17 @@ def post(client, tool_headers, tool, payload):
 
 
 def test_booking_next_weekday_persists_confirmation(make_client, tmp_path, payloads, tool_headers):
-    path = tmp_path / "appointments.json"
-    client = make_client(DATA_FILE=path)
+    client = make_client()
     result = post(client, tool_headers, "book_appointment", payloads["book_appointment"])
     assert result["booked"] is True
     assert result["confirmation"].startswith("A")
-    (appointment,) = json.loads(path.read_text())["appointments"]
-    assert appointment["id"] == result["confirmation"]
+    (appointment,) = rows(client, "appointments")
+    assert appointment["public_id"] == result["confirmation"]
     for key, value in payloads["book_appointment"].items():
+        if key in {"preferred_date", "preferred_time"}:
+            local = appointment["slot_start"].astimezone(ZoneInfo("America/New_York"))
+            assert (local.date().isoformat() if key == "preferred_date" else local.strftime("%H:%M")) == value
+            continue
         assert appointment[key] == ("+13055550199" if key == "phone" else value)
 
 
@@ -50,23 +52,39 @@ def test_unavailable_booking_returns_business_failure(client, payloads, tool_hea
 def test_third_booking_in_same_hour_is_full_with_three_alternatives(client, payloads, tool_headers):
     payload = payloads["book_appointment"]
     assert post(client, tool_headers, "book_appointment", payload)["booked"] is True
-    # Capacity is per hour, including bookings at a different minute.
-    assert post(client, tool_headers, "book_appointment", {**payload, "preferred_time": "10:30"})["booked"] is True
+    assert post(client, tool_headers, "book_appointment", payload)["booked"] is True
     result = post(client, tool_headers, "book_appointment", payload)
     assert result["booked"] is False
     assert result["message"] == "That slot is full."
     assert len(result["alternatives"]) == 3
 
 
+def test_off_hour_booking_time_is_rejected(client, payloads, tool_headers):
+    response = client.post(
+        "/tools/book_appointment",
+        json={**payloads["book_appointment"], "preferred_time": "10:30"},
+        headers=tool_headers,
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result == {
+        "ok": False,
+        "error": "invalid_input",
+        "field": "preferred_time",
+        "message": result["message"],
+    }
+    assert "on the hour" in result["message"].lower()
+    assert rows(client, "appointments") == []
+
+
 @pytest.mark.parametrize("shop_name", [None, "Another Demo Shop"])
 def test_safe_tow_is_logged_with_shop_as_default_destination(make_client, tmp_path, payloads, tool_headers, shop_name):
-    path = tmp_path / "tows.json"
-    client = make_client(DATA_FILE=path, SHOP_NAME=shop_name)
+    client = make_client(SHOP_NAME=shop_name)
     result = post(client, tool_headers, "request_tow", payloads["request_tow"])
     assert result["logged"] is True
     assert result["ticket"].startswith("T")
-    (tow,) = json.loads(path.read_text())["tows"]
-    assert tow["id"] == result["ticket"]
+    (tow,) = rows(client, "tows")
+    assert tow["public_id"] == result["ticket"]
     assert tow["destination"] == (shop_name or "Vice City Auto")
 
 
@@ -88,6 +106,19 @@ def test_message_ticket_and_requested_callback_language(client, payloads, tool_h
     assert result["saved"] is True
     assert result["ticket"].startswith("M")
     assert sentence in result["message"]
+
+
+def test_take_message_persists_vehicle_and_shows_it_on_the_board(client, payloads, tool_headers):
+    from conftest import ADMIN_AUTH
+
+    vehicle = "2012 Ford F-150"
+    result = post(client, tool_headers, "take_message", {**payloads["take_message"], "vehicle": vehicle})
+    assert result["saved"] is True
+    (message,) = rows(client, "messages")
+    assert message["vehicle"] == vehicle
+    board = client.get("/admin", auth=ADMIN_AUTH)
+    assert board.status_code == 200
+    assert vehicle in board.text
 
 
 @pytest.mark.parametrize(

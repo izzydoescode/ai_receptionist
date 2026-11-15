@@ -20,7 +20,7 @@ Caller ──PSTN──> Twilio number ──(ElevenLabs native Twilio integrati
                                               /tools/book_appointment  /tools/check_repair_status
                                               /tools/request_tow       /tools/take_message
                                               /admin  (live board, auto-refresh, for the demo screen)
-                                              data.json (mock DB: 4 cars at the shop)
+                                              SQLAlchemy → SQLite locally / Postgres in production
 ```
 - **Phone options:** (a) **Twilio number imported into ElevenLabs.** The import auto-configures the number, and warm transfer works. This is the recommended path, about $1-2/mo for the number plus usage. (b) An ElevenLabs-native or SIP number if your account offers one. (c) No phone at all: use the agent's web test call or widget. **Keep (c) ready as a backup** in case venue Wi-Fi or Twilio trial limits cause problems.
 - **Twilio trial caveat:** trial accounts play a trial message and can usually only call verified numbers. Upgrade with about $20, or demo inbound from your verified cell.
@@ -60,7 +60,7 @@ Caller ──PSTN──> Twilio number ──(ElevenLabs native Twilio integrati
 Reset between runs (only when `BEAR_ENV=dev`): `curl -u "admin:$ADMIN_PASSWORD" -X POST localhost:8000/admin/reset`
 
 ## Files
-- `backend/main.py`, `backend/requirements.txt`, `backend/requirements-dev.txt`: FastAPI tool server (`create_app()` factory) with a mock data store (`data.json` is created on first run)
+- `backend/main.py`, `backend/requirements.txt`, `backend/requirements-dev.txt`: FastAPI tool server (`create_app()` factory) with SQLAlchemy persistence (`backend/bear/`) and Alembic migrations
 - `tests/`: pytest suite (auth, admin escaping, repair-status verification, tool behaviour, tool scripts)
 - `.env.example`: every environment variable with placeholder values
 - `tools/*.json`: ElevenLabs webhook tool configs. `make_tools.py` regenerates them with your ngrok URL, and `create_tools_via_api.py` is an optional API upload (not tested, since there was no key)
@@ -79,7 +79,10 @@ python -m venv .venv && . .venv/bin/activate
 pip install --require-hashes -r backend/requirements-dev.lock   # pinned runtime + dev deps
 cp .env.example .env                               # then replace both CHANGE_ME values; never commit .env
 set -a && . ./.env && set +a                       # load the variables into this shell
-cd backend && uvicorn --factory main:create_app --reload --port 8000 --no-access-log
+cd backend
+alembic upgrade head                              # required before app startup
+python -m bear.seed --demo                         # optional demo repair orders
+uvicorn --factory main:create_app --reload --port 8000 --no-access-log
 ```
 
 Installs use the hashed lockfiles (`backend/requirements.lock` for runtime, `backend/requirements-dev.lock` for dev). After you change `backend/requirements.txt` or `backend/requirements-dev.txt`, refresh the pins:
@@ -100,11 +103,19 @@ pip-compile --allow-unsafe --generate-hashes --no-strip-extras --output-file=bac
 | `ADMIN_PASSWORD` | for `/admin` | none | HTTP Basic password. If unset, `/admin` returns 503. |
 | `BEAR_ENV` | no | none | Set to `dev` for local hacking: allows starting without `TOOL_SECRET` (tools are then open, with a warning) and enables `POST /admin/reset`. Never set it in production. |
 | `TOOL_DEADLINE_MS` | no | `4000` | Deadline in ms for `POST /tools/*` (positive integer; anything else stops startup). On timeout the tool returns `200 {"ok": false, "error": "timeout", ...}` and the abandoned worker can no longer save. `/health` and `/admin` have no deadline. |
-| `DATA_FILE` | no | `backend/data.json` | Mock JSON data store (created with 4 demo repair orders on first use). Replaced by a real DB in PLAN Task 5. |
+| `DATABASE_URL` | no | `sqlite:///./vicecity.db` | SQLAlchemy database URL, relative to the working directory for SQLite. Never log it. |
+| `SHOP_ID` | no | `vice-city-auto` | Shop used by tools; lowercase letters, digits and hyphens, starting with a letter or digit, up to 64 characters. |
 | `SHOP_NAME` | no | `Vice City Auto` | Shop name shown on the board and used as the default tow destination. |
 | `SHOP_TZ` | no | `America/New_York` | Shop time zone for slots and timestamps. |
 
 Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `GET /admin` (HTTP Basic), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or RO number** on the ticket.
+
+### Postgres
+Set `DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE` in your environment, then run `alembic upgrade head` from `backend/` before starting the app. `postgres://` and `postgresql://` URLs are also normalized to psycopg. For TLS, append `?sslmode=require`. Keep real credentials out of source control and logs.
+
+Neon (planned production DB): paste Neon's connection string as-is, e.g. `DATABASE_URL=postgresql://USER:PASSWORD@ep-example-123456.us-east-2.aws.neon.tech/vicecity?sslmode=require`. The engine uses `pool_pre_ping`, so connections dropped while Neon's compute is suspended are replaced. On Fly.io the URL belongs in a Fly secret, not in `fly.toml`, and `alembic upgrade head` should run as the release command. Neither is set up yet. SQLite on Fly is not durable without a volume, so use it only locally.
+
+The app requires all five tables at startup and never creates or seeds them automatically. Demo data is optional: `python -m bear.seed --demo --shop vice-city-auto` upserts four repair orders. `/admin?shop=vice-city-auto` selects a shop's newest 50 rows per section. The dev reset clears only the configured shop and reloads its demo orders.
 
 ### Tool responses and input rules
 - Every tool reply has `ok`. Bad input comes back as `200 {"ok": false, "error": "invalid_input", "field": "...", "message": "<speakable hint>"}` so the agent can re-ask; an unexpected server error is `200 {"ok": false, "error": "internal_error", ...}`; a deadline miss is `error: "timeout"`.
@@ -128,7 +139,7 @@ Lint and format (same pinned ruff as CI): `ruff check . && ruff format --check .
 
 ### CI (GitHub Actions)
 On every push and pull request:
-- **tests**: pytest on Python 3.11 and 3.13 with `--cov-fail-under=80`; `coverage.xml` is uploaded as an artifact.
+- **tests**: pytest on Python 3.11 and 3.13 with `--cov-fail-under=80`; `coverage.xml` is uploaded as an artifact. A separate job runs `python -m pytest -m pg` against a Postgres 17 service.
 - **quality**: `ruff check` and `ruff format --check`.
 - **security**:
   - CodeQL (security-and-quality queries; the SARIF file is kept as an artifact and summarized, and any error-level finding fails the job);
@@ -137,5 +148,5 @@ On every push and pull request:
 
 Security also runs weekly. Dependabot opens weekly grouped updates for pip and the pinned actions. Because the repo is private, CodeQL results are not uploaded to the Security tab by default. Set the repo variable `CODE_SCANNING_UPLOAD=true` once code scanning is available.
 
-The tests use only dummy secrets and temp data files. They never call the network or write into `tools/`.
+The tests use only dummy secrets and temporary SQLite databases. The default suite never calls external services or writes into `tools/`. To run the optional Postgres tests against a disposable test database, set `BEAR_TEST_PG_URL` and run `python -m pytest -m pg`; these tests migrate and reset test data.
 Compliance note for real deployment: Florida requires all-party consent to record calls (Fla. Stat. 934.03), which is why the greeting says "calls may be recorded." Bear also tells callers it's an AI.

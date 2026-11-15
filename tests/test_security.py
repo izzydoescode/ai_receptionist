@@ -1,4 +1,3 @@
-import json
 import logging
 import runpy
 from pathlib import Path
@@ -6,7 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 
-from conftest import ADMIN_AUTH, CONFIG_KEYS, SECRET
+from conftest import ADMIN_AUTH, CONFIG_KEYS, SECRET, rows
 
 TOOLS = ["book_appointment", "check_repair_status", "request_tow", "take_message"]
 
@@ -80,19 +79,18 @@ def test_dev_reset_requires_basic_auth(make_client, auth):
 
 
 def test_authenticated_dev_reset_restores_seed(make_client, payloads, tool_headers, tmp_path):
-    data_file = tmp_path / "reset.json"
-    client = make_client(BEAR_ENV="dev", DATA_FILE=data_file)
+    client = make_client(BEAR_ENV="dev")
     booking = client.post("/tools/book_appointment", json=payloads["book_appointment"], headers=tool_headers).json()
     assert booking["booked"] is True
-    assert json.loads(data_file.read_text())["appointments"]
+    assert rows(client, "appointments")
     response = client.post("/admin/reset", auth=ADMIN_AUTH)
     assert response.status_code == 200
     assert response.json() == {"reset": True}
-    data = json.loads(data_file.read_text())
+    data = client.app.state.store.board(client.app.state.settings.shop_id, 1000)
     assert data["appointments"] == []
     assert data["messages"] == []
     assert data["tows"] == []
-    assert {row["ro"] for row in data["repairs"]} == {"1001", "1002", "1003", "1004"}
+    assert {row["ro_number"] for row in data["repair_orders"]} == {"1001", "1002", "1003", "1004"}
     assert booking["confirmation"] not in client.get("/admin", auth=ADMIN_AUTH).text
 
 
@@ -152,12 +150,10 @@ def test_dev_with_short_configured_secret_still_enforces_it(make_client, payload
         assert client.post(url, json=payload, headers={"X-Tool-Secret": "dummy-short"}).status_code == 200
 
 
-def test_apps_keep_their_own_secret_and_data_file(make_client, payloads, tmp_path):
-    first_path = tmp_path / "first.json"
-    second_path = tmp_path / "second.json"
+def test_apps_keep_their_own_secret_and_database(make_client, payloads, tmp_path):
     other_secret = "y" * 40
-    first = make_client(DATA_FILE=first_path)
-    second = make_client(DATA_FILE=second_path, TOOL_SECRET=other_secret)
+    first = make_client()
+    second = make_client(TOOL_SECRET=other_secret)
     assert (
         first.post("/tools/take_message", json=payloads["take_message"], headers={"X-Tool-Secret": SECRET}).status_code
         == 200
@@ -174,8 +170,8 @@ def test_apps_keep_their_own_secret_and_data_file(make_client, payloads, tmp_pat
         ).status_code
         == 200
     )
-    assert len(json.loads(first_path.read_text())["messages"]) == 1
-    assert json.loads(second_path.read_text())["messages"] == []
+    assert len(rows(first, "messages")) == 1
+    assert rows(second, "messages") == []
 
 
 def test_non_ascii_tool_secret_header_is_rejected_not_500(client, payloads):

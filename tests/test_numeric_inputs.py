@@ -1,6 +1,6 @@
 """LLMs sometimes send phone and RO numbers as JSON numbers; accept them."""
 
-import json
+from conftest import rows
 
 
 def test_numeric_phone_is_normalized(client, tool_headers, payloads):
@@ -8,8 +8,7 @@ def test_numeric_phone_is_normalized(client, tool_headers, payloads):
         "/tools/take_message", headers=tool_headers, json={**payloads["take_message"], "phone": 3055550199}
     )
     assert response.json()["ok"] is True
-    data = json.loads(client.app.state.settings.data_file.read_text())
-    assert data["messages"][-1]["phone"] == "+13055550199"
+    assert rows(client, "messages")[0]["phone"] == "+13055550199"
 
 
 def test_numeric_repair_factors_verify(client, tool_headers):
