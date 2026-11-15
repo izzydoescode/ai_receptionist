@@ -10,6 +10,7 @@ from conftest import future_day
 def post(client, tool_headers, tool, payload):
     response = client.post(f"/tools/{tool}", json=payload, headers=tool_headers)
     assert response.status_code == 200
+    assert response.json()["ok"] is True
     return response.json()
 
 
@@ -22,15 +23,13 @@ def test_booking_next_weekday_persists_confirmation(make_client, tmp_path, paylo
     appointment, = json.loads(path.read_text())["appointments"]
     assert appointment["id"] == result["confirmation"]
     for key, value in payloads["book_appointment"].items():
-        assert appointment[key] == value
+        assert appointment[key] == ("+13055550199" if key == "phone" else value)
 
 
-@pytest.mark.parametrize("case", ["bad_date", "sunday", "early_weekday", "late_saturday", "past"])
+@pytest.mark.parametrize("case", ["sunday", "early_weekday", "late_saturday", "past"])
 def test_unavailable_booking_returns_business_failure(client, payloads, tool_headers, case):
     payload = payloads["book_appointment"].copy()
-    if case == "bad_date":
-        payload["preferred_date"] = "not-a-date"
-    elif case == "sunday":
+    if case == "sunday":
         payload["preferred_date"] = future_day(6).isoformat()
     elif case == "early_weekday":
         payload["preferred_time"] = "07:00"
@@ -95,7 +94,12 @@ def test_message_ticket_and_requested_callback_language(client, payloads, tool_h
     ("request_tow", field) for field in
     ["customer_name", "phone", "vehicle", "pickup_location", "issue", "is_safe"]
 ] + [("take_message", field) for field in ["caller_name", "phone", "reason"]])
-def test_missing_required_tool_field_returns_422(client, payloads, tool_headers, tool, field):
+def test_missing_required_tool_field_returns_validation_envelope(client, payloads, tool_headers, tool, field):
     payload = payloads[tool].copy()
     del payload[field]
-    assert client.post(f"/tools/{tool}", json=payload, headers=tool_headers).status_code == 422
+    from test_validation import assert_invalid, snapshot
+
+    before = snapshot(client)
+    response = client.post(f"/tools/{tool}", json=payload, headers=tool_headers)
+    assert snapshot(client) == before
+    assert_invalid(response, field)

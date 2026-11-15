@@ -9,10 +9,10 @@ from test_tool_scripts import load_script
 ROOT = Path(__file__).resolve().parents[1]
 NEED_MSG = "I need the last name on the repair order plus the phone number on the ticket or the RO number."
 FAIL_MSG = "I couldn't verify that repair order. Offer to take a message for the service writer."
-NEED = {"found": False, "needs": ["last_name", "phone_or_ro_number"], "message": NEED_MSG}
-FAIL = {"found": False, "message": FAIL_MSG}
+NEED = {"ok": True, "found": False, "needs": ["last_name", "phone_or_ro_number"], "message": NEED_MSG}
+FAIL = {"ok": True, "found": False, "message": FAIL_MSG}
 SUCCESS_KEYS = {
-    "found", "ro_number", "customer_first_name", "vehicle", "status",
+    "ok", "found", "ro_number", "customer_first_name", "vehicle", "status",
     "details", "eta", "estimated_balance",
 }
 
@@ -97,6 +97,7 @@ def test_all_verification_failures_are_byte_identical(client, duplicate_client, 
 ], ids=["local-phone", "case-and-ro-whitespace", "all-factors", "accent-insensitive", "hyphenated", "full-name", "ignored-extra-plate"])
 def test_verified_status_has_only_public_fields(client, tool_headers, payload, ro, first_name, vehicle):
     result = lookup(client, tool_headers, payload).json()
+    assert result["ok"] is True
     assert result["found"] is True
     assert set(result) == SUCCESS_KEYS
     assert result["ro_number"] == ro
