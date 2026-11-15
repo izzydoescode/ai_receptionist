@@ -18,6 +18,7 @@ def migration_config():
 def assert_metadata_matches(engine):
     from alembic.autogenerate import compare_metadata
     from alembic.migration import MigrationContext
+
     from bear.db import metadata
 
     with engine.connect() as conn:
@@ -26,8 +27,9 @@ def assert_metadata_matches(engine):
 
 def test_migration_lifecycle(tmp_path, monkeypatch):
     from alembic import command
-    from bear.db import make_engine
     from sqlalchemy import inspect
+
+    from bear.db import make_engine
 
     url = f"sqlite:///{tmp_path}/migration.db"
     monkeypatch.setenv("DATABASE_URL", url)
@@ -44,8 +46,9 @@ def test_migration_lifecycle(tmp_path, monkeypatch):
 
 
 def test_migration_cli_from_backend(tmp_path):
-    from bear.db import make_engine
     from sqlalchemy import inspect
+
+    from bear.db import make_engine
 
     url = f"sqlite:///{tmp_path}/cli.db"
     result = subprocess.run(

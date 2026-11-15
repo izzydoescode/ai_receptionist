@@ -68,8 +68,9 @@ def store(engine):
 
 
 def audit_rows(engine):
-    from bear.db import metadata
     from sqlalchemy import select
+
+    from bear.db import metadata
 
     with engine.connect() as conn:
         return [dict(row) for row in conn.execute(select(metadata.tables["audit_events"])).mappings()]

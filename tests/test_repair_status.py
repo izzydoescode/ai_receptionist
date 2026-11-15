@@ -206,7 +206,6 @@ def test_lookup_records_private_audit(client, tool_headers, payload, outcome):
     import os
 
     from bear.db import make_engine
-
     from test_store import audit_rows
 
     lookup(client, tool_headers, payload)

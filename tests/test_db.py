@@ -29,8 +29,9 @@ def test_sqlite_concurrent_writes(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
 
-    from bear.db import make_engine
     from sqlalchemy import text
+
+    from bear.db import make_engine
 
     engine = make_engine(f"sqlite:///{tmp_path}/concurrent.db")
     try:
@@ -71,7 +72,6 @@ def test_invalid_shop_id(make_client, shop):
 @pytest.mark.parametrize("table", ["appointments", "repair_orders", "tows", "messages", "audit_events"])
 def test_any_missing_table_requires_migration(tmp_path, monkeypatch, table):
     from bear.db import create_schema, make_engine, metadata
-
     from main import create_app
 
     url = f"sqlite:///{tmp_path}/partial.db"

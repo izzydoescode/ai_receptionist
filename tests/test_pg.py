@@ -17,6 +17,7 @@ if not URL:
 @pytest.fixture(scope="module")
 def pg_engine():
     from alembic import command
+
     from bear.db import make_engine
 
     with pytest.MonkeyPatch.context() as patch:
