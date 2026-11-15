@@ -29,7 +29,7 @@ Caller ──PSTN──> Twilio number ──(ElevenLabs native Twilio integrati
 | Time | Task |
 |---|---|
 | 12:00-12:30 | Check in, claim ElevenLabs Creator and Mel credits. Create the GitHub repo and push this kit **through Mel** so your first commit shows up in Mel history |
-| 12:30-1:15 | Backend: see **Run the backend locally** below (`uvicorn --factory main:create_app`, with `TOOL_SECRET` and `ADMIN_PASSWORD` set). Then run `ngrok http 8000` and `python tools/make_tools.py https://<id>.ngrok-free.app`. Check `curl https://<id>.ngrok-free.app/health` |
+| 12:30-1:15 | Backend: see **Run the backend locally** below (`uvicorn --factory main:create_app`, with `TOOL_SECRET` and `ADMIN_PASSWORD` set). Then run `ngrok http 8000` and `PUBLIC_BASE_URL=https://<id>.ngrok-free.app python tools/make_tools.py` (see `tools/README.md`). Check `curl https://<id>.ngrok-free.app/health` |
 | 1:15-2:15 | ElevenLabs: create the agent (Blank) and paste `agent/system_prompt.md`. Add the first message, add the es and fr languages with their first messages, and turn on the language_detection and end_call tools. Add the 4 webhook tools from `tools/*.json` (or `ELEVENLABS_API_KEY=... python tools/create_tools_via_api.py`). Set the timezone to America/New_York. Use **Test AI agent** in the browser |
 | 2:15-3:00 | Voices: audition library voices or use Voice Design (`agent/agent_config_notes.md`). Assign the EN gruff voice and the es/fr voices |
 | 3:00-3:30 | Lunch (Gratitude Luncheon). Network, and ask the ElevenLabs folks about Kreyòl |
@@ -64,7 +64,7 @@ Reset between runs (only when `BEAR_ENV=dev`): `curl -u "admin:$ADMIN_PASSWORD" 
 - `tests/`: pytest suite (auth, admin escaping, repair-status verification, tool behaviour, tool scripts)
 - `.env.example`: every environment variable with placeholder values
 - `shops/*.yaml`: one config file per shop (hours, holidays, bays, numbers, languages, voices, greetings). See `docs/SHOPS.md`; `vice-city-auto.yaml` is the made-up demo shop
-- `tools/*.json`: ElevenLabs webhook tool configs. `make_tools.py` regenerates them with your ngrok URL, and `create_tools_via_api.py` is an optional API upload (not tested, since there was no key)
+- `tools/*.json`: ElevenLabs webhook tool configs. `make_tools.py` regenerates them from `PUBLIC_BASE_URL` and the secret's id, and `create_tools_via_api.py` is an optional API upload. Setup steps: `tools/README.md`
 - `agent/system_prompt.md`: persona, language rules, the 6 call flows, guardrails, and first messages in EN/ES/FR/HT
 - `agent/agent_config_notes.md`: settings, voice picking, Voice Design prompts, transfer rule
 
