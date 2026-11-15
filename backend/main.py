@@ -109,12 +109,19 @@ REPAIR_STATUS_NEEDS = {
     "ok": True,
     "found": False,
     "needs": ["last_name", "phone_or_ro_number"],
-    "message": "I need the last name on the repair order plus the phone number on the ticket or the RO number.",
+    "message": (
+        "I just need the last name on the repair order, plus either the phone number on the ticket "
+        "or the repair order number. You'll find that number at the top of your written estimate "
+        "if you got one, or on your deposit receipt if you already dropped the car off and paid a deposit."
+    ),
 }
 REPAIR_STATUS_FAILURE = {
     "ok": True,
     "found": False,
-    "message": "I couldn't verify that repair order. Offer to take a message for the service writer.",
+    "message": (
+        "I'm not finding a match with that info. Offer to take a message for the service writer "
+        "so they can look it up and call the caller back."
+    ),
 }
 
 
