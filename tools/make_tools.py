@@ -4,14 +4,17 @@ Each file is a valid `tool_config` for POST /v1/convai/tools (or `elevenlabs too
 See tools/README.md for the manual steps.
 """
 
+import hmac
 import json
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
 TOOLS_DIR = Path(__file__).resolve().parent
 DEFAULT_BASE = "https://YOUR-BACKEND-HOST"
 LOCAL_HOSTS = {"localhost", "127.0.0.1"}
+DEFAULT_SECRET_ID = "YOUR-TOOL-SECRET-ID"
 
 
 def public_base_url(environ):
@@ -99,9 +102,22 @@ TOOLS = {
 }
 
 
+def tool_secret_id(environ):
+    """ID of the ElevenLabs workspace secret holding TOOL_SECRET; the value itself never goes in JSON."""
+    secret_id = environ.get("ELEVENLABS_TOOL_SECRET_ID") or DEFAULT_SECRET_ID
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", secret_id):
+        raise SystemExit("ELEVENLABS_TOOL_SECRET_ID must be the secret's id (letters, digits, - and _)")
+    tool_secret = environ.get("TOOL_SECRET", "")
+    if tool_secret and hmac.compare_digest(secret_id.encode(), tool_secret.encode()):
+        raise SystemExit("ELEVENLABS_TOOL_SECRET_ID is the secret value itself; use the id ElevenLabs shows for it")
+    return secret_id
+
+
 def main(out_dir=None, environ=None):
     out = Path(out_dir) if out_dir is not None else TOOLS_DIR
-    base = public_base_url(os.environ if environ is None else environ)
+    environ = os.environ if environ is None else environ
+    base = public_base_url(environ)
+    headers = {"Content-Type": "application/json", "X-Tool-Secret": {"secret_id": tool_secret_id(environ)}}
     paths = []
     for name, (desc, props, req) in TOOLS.items():
         cfg = {
@@ -112,7 +128,7 @@ def main(out_dir=None, environ=None):
             "api_schema": {
                 "url": f"{base}/tools/{name}",
                 "method": "POST",
-                "request_headers": {"Content-Type": "application/json"},
+                "request_headers": headers,
                 "request_body_schema": {
                     "type": "object",
                     "description": f"Arguments for {name}",

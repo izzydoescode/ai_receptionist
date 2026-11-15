@@ -7,7 +7,10 @@
     "url": "https://YOUR-BACKEND-HOST/tools/check_repair_status",
     "method": "POST",
     "request_headers": {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "X-Tool-Secret": {
+        "secret_id": "YOUR-TOOL-SECRET-ID"
+      }
     },
     "request_body_schema": {
       "type": "object",

@@ -127,3 +127,38 @@ def test_api_creator_posts_each_generated_config_with_dummy_key(generated_tools,
         assert request.get_method() == "POST"
         assert {key.lower(): value for key, value in request.header_items()}["xi-api-key"] == dummy_key
         assert json.loads(request.data) == {"tool_config": json.loads((generated_tools / f"{name}.json").read_text())}
+
+
+def headers_of(directory, name="take_message"):
+    return json.loads((directory / f"{name}.json").read_text())["api_schema"]["request_headers"]
+
+
+def test_tool_secret_header_is_a_secret_store_reference(tmp_path):
+    real_secret = "z" * 40
+    environ = {
+        "PUBLIC_BASE_URL": "https://example.test",
+        "TOOL_SECRET": real_secret,
+        "ELEVENLABS_TOOL_SECRET_ID": "sec_demo123",
+    }
+    load_script("make_tools").main(out_dir=tmp_path, environ=environ)
+    for path in tmp_path.glob("*.json"):
+        assert headers_of(tmp_path, path.stem)["X-Tool-Secret"] == {"secret_id": "sec_demo123"}
+        assert real_secret not in path.read_text()
+
+
+def test_secret_id_defaults_to_a_placeholder(tmp_path):
+    load_script("make_tools").main(out_dir=tmp_path, environ={})
+    assert headers_of(tmp_path)["X-Tool-Secret"] == {"secret_id": "YOUR-TOOL-SECRET-ID"}
+
+
+def test_secret_value_passed_as_secret_id_is_refused(tmp_path):
+    environ = {"TOOL_SECRET": "z" * 40, "ELEVENLABS_TOOL_SECRET_ID": "z" * 40}
+    with pytest.raises(SystemExit, match="ELEVENLABS_TOOL_SECRET_ID"):
+        load_script("make_tools").main(out_dir=tmp_path, environ=environ)
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("secret_id", ["has space", "a/b", "x" * 129, '"quoted"'])
+def test_malformed_secret_id_is_refused(tmp_path, secret_id):
+    with pytest.raises(SystemExit, match="ELEVENLABS_TOOL_SECRET_ID"):
+        load_script("make_tools").main(out_dir=tmp_path, environ={"ELEVENLABS_TOOL_SECRET_ID": secret_id})
