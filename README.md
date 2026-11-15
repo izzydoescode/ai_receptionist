@@ -149,7 +149,7 @@ On every push and pull request:
   - `pip-audit --strict` on the hashed lockfile;
   - gitleaks over the full git history.
 
-Security also runs weekly. Dependabot opens weekly grouped updates for pip and the pinned actions. Because the repo is private, CodeQL results are not uploaded to the Security tab by default. Set the repo variable `CODE_SCANNING_UPLOAD=true` once code scanning is available.
+Security also runs weekly. Dependabot opens weekly grouped updates for pip and the pinned actions. The repo is public and `CODE_SCANNING_UPLOAD` is already set, so CodeQL results are uploaded to the Security tab.
 
 The tests use only dummy secrets and temporary SQLite databases. The default suite never calls external services or writes into `tools/`. To run the optional Postgres tests against a disposable test database, set `BEAR_TEST_PG_URL` and run `python -m pytest -m pg`; these tests migrate and reset test data.
 Compliance note for real deployment: Florida requires all-party consent to record calls (Fla. Stat. 934.03), which is why the greeting says "calls may be recorded." Bear also tells callers it's an AI.
