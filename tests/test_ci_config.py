@@ -28,7 +28,7 @@ def test_workflow_contract(name):
     config = workflow(name)
     assert config["name"] == name
     triggers = config.get("on", config.get(True))
-    assert triggers["push"] == {"branches": ["**"]}
+    assert triggers["push"] == {"branches": ["master"]}
     assert triggers["pull_request"] in (None, {}, {"branches": ["**"]})
     assert config["permissions"] == {"contents": "read"}
     assert config["concurrency"] == {

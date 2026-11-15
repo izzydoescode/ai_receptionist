@@ -1,7 +1,7 @@
 name: tests
 on:
   push:
-    branches: ["**"]
+    branches: ["master"]
   pull_request:
 permissions:
   contents: read
