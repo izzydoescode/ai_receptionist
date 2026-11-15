@@ -1,11 +1,12 @@
 """Task 3 public validation contract (red phase; dummy data only)."""
+
 import json
 from datetime import datetime, timedelta
 
 import pytest
 
 WRITE_TOOLS = ["book_appointment", "request_tow", "take_message"]
-COLLECTION = dict(zip(WRITE_TOOLS, ["appointments", "tows", "messages"]))
+COLLECTION = dict(zip(WRITE_TOOLS, ["appointments", "tows", "messages"], strict=True))
 TEXT_LIMITS = [
     ("book_appointment", "customer_name", 80),
     ("book_appointment", "vehicle", 80),
@@ -20,10 +21,10 @@ TEXT_LIMITS = [
     ("take_message", "reason", 500),
     ("take_message", "vehicle", 80),
 ]
-REQUIRED_TEXT = [(t, f) for t, f, _ in TEXT_LIMITS
-                 if f not in {"notes", "destination"} and (t, f) != ("take_message", "vehicle")]
-LANGUAGES = [("book_appointment", "language"), ("request_tow", "language"),
-             ("take_message", "callback_language")]
+REQUIRED_TEXT = [
+    (t, f) for t, f, _ in TEXT_LIMITS if f not in {"notes", "destination"} and (t, f) != ("take_message", "vehicle")
+]
+LANGUAGES = [("book_appointment", "language"), ("request_tow", "language"), ("take_message", "callback_language")]
 
 
 def snapshot(client):
@@ -49,19 +50,16 @@ def assert_invalid(response, field, hint=None):
 
 def reject(client, tool_headers, payloads, tool, field, value, hint=None):
     before = snapshot(client)
-    response = client.post(f"/tools/{tool}", headers=tool_headers,
-                           json={**payloads[tool], field: value})
+    response = client.post(f"/tools/{tool}", headers=tool_headers, json={**payloads[tool], field: value})
     assert snapshot(client) == before, "Invalid input must not write any records"
     assert_invalid(response, field, hint)
 
 
 def accept(client, tool_headers, payloads, tool, **changes):
-    response = client.post(f"/tools/{tool}", headers=tool_headers,
-                           json={**payloads[tool], **changes})
+    response = client.post(f"/tools/{tool}", headers=tool_headers, json={**payloads[tool], **changes})
     assert response.status_code == 200
     result = response.json()
-    assert result.get({"book_appointment": "booked", "request_tow": "logged",
-                       "take_message": "saved"}[tool]) is True
+    assert result.get({"book_appointment": "booked", "request_tow": "logged", "take_message": "saved"}[tool]) is True
     record = snapshot(client)[COLLECTION[tool]][-1]
     assert result.get("ok") is True
     return record
@@ -70,8 +68,7 @@ def accept(client, tool_headers, payloads, tool, **changes):
 @pytest.mark.parametrize("tool", WRITE_TOOLS)
 @pytest.mark.parametrize("phone", ["555-0101", "123456789012", "21234567890", "", "abc", " " * 23 + "3055550199"])
 def test_invalid_phone(client, tool_headers, payloads, tool, phone):
-    reject(client, tool_headers, payloads, tool, "phone", phone,
-           "10-digit" if len(phone) <= 32 else None)
+    reject(client, tool_headers, payloads, tool, "phone", phone, "10-digit" if len(phone) <= 32 else None)
 
 
 @pytest.mark.parametrize("tool", WRITE_TOOLS)
@@ -101,12 +98,10 @@ def test_international_numbers_need_plus_and_valid_length(client, tool_headers, 
     reject(client, tool_headers, payloads, tool, "phone", phone)
 
 
-
 @pytest.mark.parametrize("tool", WRITE_TOOLS)
 @pytest.mark.parametrize("phone", ["+0123456789", "+0 123 456 789", "+00000000"])
 def test_e164_country_code_cannot_start_with_zero(client, tool_headers, payloads, tool, phone):
     reject(client, tool_headers, payloads, tool, "phone", phone)
-
 
 
 @pytest.mark.parametrize("tool", WRITE_TOOLS)
@@ -136,8 +131,11 @@ def test_repair_factor_max_length(client, tool_headers, payloads, field, limit):
 
 @pytest.mark.parametrize("field,limit", [("phone", 32), ("ro_number", 20), ("last_name", 80)])
 def test_repair_factor_at_limit_is_business_response(client, tool_headers, field, limit):
-    response = client.post("/tools/check_repair_status", headers=tool_headers,
-                           json={"last_name": "Demo", "ro_number": "dummy", field: "x" * limit})
+    response = client.post(
+        "/tools/check_repair_status",
+        headers=tool_headers,
+        json={"last_name": "Demo", "ro_number": "dummy", field: "x" * limit},
+    )
     assert response.status_code == 200
     assert response.json()["ok"] is True
     assert response.json()["found"] is False
@@ -169,19 +167,35 @@ def frozen_today(monkeypatch):
 
 
 def test_date_beyond_60_days(client, tool_headers, payloads, frozen_today):
-    reject(client, tool_headers, payloads, "book_appointment", "preferred_date",
-           (frozen_today + timedelta(days=61)).isoformat(), "60 days")
+    reject(
+        client,
+        tool_headers,
+        payloads,
+        "book_appointment",
+        "preferred_date",
+        (frozen_today + timedelta(days=61)).isoformat(),
+        "60 days",
+    )
 
 
 @pytest.mark.parametrize("time", ["10:00", "09:30"])
 def test_exactly_60_days_accepted(client, tool_headers, payloads, frozen_today, time):
-    accept(client, tool_headers, payloads, "book_appointment",
-           preferred_date=(frozen_today + timedelta(days=60)).isoformat(), preferred_time=time)
+    accept(
+        client,
+        tool_headers,
+        payloads,
+        "book_appointment",
+        preferred_date=(frozen_today + timedelta(days=60)).isoformat(),
+        preferred_time=time,
+    )
 
 
 def test_past_date_is_business_outcome(client, tool_headers, payloads, frozen_today):
-    response = client.post("/tools/book_appointment", headers=tool_headers,
-                           json={**payloads["book_appointment"], "preferred_date": "2026-11-13"})
+    response = client.post(
+        "/tools/book_appointment",
+        headers=tool_headers,
+        json={**payloads["book_appointment"], "preferred_date": "2026-11-13"},
+    )
     assert response.status_code == 200
     result = response.json()
     assert result["booked"] is False
@@ -286,12 +300,15 @@ def test_non_boolean_is_safe(client, tool_headers, payloads):
     reject(client, tool_headers, payloads, "request_tow", "is_safe", "maybe")
 
 
-@pytest.mark.parametrize("tool,changes,first", [
-    ("book_appointment", {"customer_name": "", "phone": "abc"}, "customer_name"),
-    ("request_tow", {"phone": "abc", "issue": ""}, "phone"),
-    ("take_message", {"reason": "", "urgency": "urgent"}, "reason"),
-    ("check_repair_status", {"last_name": "x" * 81, "phone": "x" * 33}, "phone"),
-])
+@pytest.mark.parametrize(
+    "tool,changes,first",
+    [
+        ("book_appointment", {"customer_name": "", "phone": "abc"}, "customer_name"),
+        ("request_tow", {"phone": "abc", "issue": ""}, "phone"),
+        ("take_message", {"reason": "", "urgency": "urgent"}, "reason"),
+        ("check_repair_status", {"last_name": "x" * 81, "phone": "x" * 33}, "phone"),
+    ],
+)
 def test_first_invalid_field_in_model_order(client, tool_headers, payloads, tool, changes, first):
     before = snapshot(client)
     response = client.post(f"/tools/{tool}", headers=tool_headers, json={**payloads[tool], **changes})
@@ -300,8 +317,9 @@ def test_first_invalid_field_in_model_order(client, tool_headers, payloads, tool
 
 
 @pytest.mark.parametrize("tool", [*WRITE_TOOLS, "check_repair_status"])
-@pytest.mark.parametrize("kind,status", [("oversized", 413), ("plain", 415), ("missing-type", 415),
-                                        ("malformed", 400), ("list", 400)])
+@pytest.mark.parametrize(
+    "kind,status", [("oversized", 413), ("plain", 415), ("missing-type", 415), ("malformed", 400), ("list", 400)]
+)
 def test_transport_errors(client, tool_headers, payloads, tool, kind, status):
     headers = {**tool_headers, "Content-Type": "application/json"}
     body = json.dumps(payloads[tool]).encode()
@@ -315,10 +333,9 @@ def test_transport_errors(client, tool_headers, payloads, tool, kind, status):
     elif kind == "malformed":
         body = b'{"broken":'
     elif kind == "list":
-        body = b'[]'
+        body = b"[]"
     before = snapshot(client)
-    response = client.post(f"/tools/{tool}", headers=headers,
-                           content=iter([body]) if kind == "oversized" else body)
+    response = client.post(f"/tools/{tool}", headers=headers, content=iter([body]) if kind == "oversized" else body)
     assert snapshot(client) == before
     assert response.status_code == status
     if status == 400:
@@ -331,7 +348,8 @@ def test_body_at_16384_bytes_with_charset_accepted(client, tool_headers, payload
     body = json.dumps(payloads[tool]).encode()
     body += b" " * (16384 - len(body))
     assert len(body) == 16384
-    response = client.post(f"/tools/{tool}", content=body,
-                           headers={**tool_headers, "Content-Type": "application/json; charset=utf-8"})
+    response = client.post(
+        f"/tools/{tool}", content=body, headers={**tool_headers, "Content-Type": "application/json; charset=utf-8"}
+    )
     assert response.status_code == 200
     assert response.json()["ok"] is True

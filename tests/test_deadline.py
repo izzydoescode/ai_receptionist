@@ -1,13 +1,14 @@
 """Task 4 deadlines must stop work before a timed-out write can persist."""
+
 import json
 import logging
-from pathlib import Path
 import time
+from pathlib import Path
+
+import pytest
 
 import main
 import make_tools
-import pytest
-
 from conftest import ADMIN_AUTH
 from test_logging import request_record
 
@@ -49,7 +50,11 @@ def test_deadline_does_not_persist_late(make_client, monkeypatch, payloads, tool
     assert json.loads(path.read_text())[collection] == before
     assert elapsed < 0.5
     assert response.status_code == 200
-    assert response.json() == {"ok": False, "error": "timeout", "message": "Sorry, our system is slow right now. Let me take a message."}
+    assert response.json() == {
+        "ok": False,
+        "error": "timeout",
+        "message": "Sorry, our system is slow right now. Let me take a message.",
+    }
     entry = request_record(caplog, response, "POST", f"/tools/{tool}", tool)
     assert entry["error"] == "timeout"
 
@@ -79,7 +84,9 @@ def test_fast_tool_under_deadline(make_client, payloads, tool_headers):
     assert len(json.loads(client.app.state.settings.data_file.read_text())["messages"]) == 1
 
 
-@pytest.mark.parametrize("path", sorted((Path(__file__).resolve().parents[1] / "tools").glob("*.json")), ids=lambda p: p.name)
+@pytest.mark.parametrize(
+    "path", sorted((Path(__file__).resolve().parents[1] / "tools").glob("*.json")), ids=lambda p: p.name
+)
 def test_committed_tool_timeout(path):
     assert json.loads(path.read_text())["response_timeout_secs"] == 10
 
@@ -115,8 +122,13 @@ def test_abandoned_worker_does_not_clobber_newer_write(tmp_path):
         main._REQUEST_BOUND.reset(token)
     assert json.loads(path.read_text())["messages"] == [{"reason": "newer message"}]
 
-@pytest.mark.parametrize("tool,flag", [("take_message", "saved"), ("request_tow", "logged"), ("book_appointment", "booked")])
-def test_write_cycle_bails_when_the_request_is_no_longer_open(make_client, monkeypatch, payloads, tool_headers, tool, flag):
+
+@pytest.mark.parametrize(
+    "tool,flag", [("take_message", "saved"), ("request_tow", "logged"), ("book_appointment", "booked")]
+)
+def test_write_cycle_bails_when_the_request_is_no_longer_open(
+    make_client, monkeypatch, payloads, tool_headers, tool, flag
+):
     client = make_client()
     path = client.app.state.settings.data_file
     assert client.get("/admin", auth=ADMIN_AUTH).status_code == 200

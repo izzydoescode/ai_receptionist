@@ -2,10 +2,11 @@
 Needs ELEVENLABS_API_KEY in env. Not run by the kit author (no key); if it errors, add tools in the dashboard
 by pasting tools/*.json fields (Agent > Tools > Add tool > Webhook).
 """
+
 import json
 import os
-from pathlib import Path
 import urllib.request
+from pathlib import Path
 
 
 def main(tools_dir=None):
@@ -17,7 +18,9 @@ def main(tools_dir=None):
     for path in sorted(directory.glob("*.json")):
         body = json.dumps({"tool_config": json.loads(path.read_text())}).encode()
         req = urllib.request.Request(
-            "https://api.elevenlabs.io/v1/convai/tools", data=body, method="POST",
+            "https://api.elevenlabs.io/v1/convai/tools",
+            data=body,
+            method="POST",
             headers={"xi-api-key": key, "Content-Type": "application/json"},
         )
         with urllib.request.urlopen(req, timeout=30) as response:

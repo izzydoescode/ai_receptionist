@@ -2,3 +2,7 @@
 pytest
 pytest-cov
 httpx
+ruff==0.17.5
+pyyaml>=6
+pip-audit==2.10.1
+pip-tools==7.6.2

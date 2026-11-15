@@ -1,25 +1,38 @@
 """Task 4 request logging and privacy contract (intentionally red)."""
+
 import base64
 import json
 import logging
 import os
-from pathlib import Path
 import re
 import subprocess
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
-import main
 import pytest
 
+import main
 from conftest import ADMIN_AUTH, SECRET
 
 ROOT = Path(__file__).resolve().parents[1]
 FORBIDDEN = (
-    "Zelda Quixote", "Quixote", "1999 Secret Wagon", "123 Hidden Street",
-    "PRIVATE-ISSUE-TEXT", "PRIVATE-REASON-TEXT", "PRIVATE-NOTES-TEXT",
-    "(305) 555-0199", "3055550199", "305-555-0199", "+13055550199", "5550199",
-    SECRET, "WRONG-SECRET-VALUE", ADMIN_AUTH[1], "Basic WRONG-AUTH-VALUE",
+    "Zelda Quixote",
+    "Quixote",
+    "1999 Secret Wagon",
+    "123 Hidden Street",
+    "PRIVATE-ISSUE-TEXT",
+    "PRIVATE-REASON-TEXT",
+    "PRIVATE-NOTES-TEXT",
+    "(305) 555-0199",
+    "3055550199",
+    "305-555-0199",
+    "+13055550199",
+    "5550199",
+    SECRET,
+    "WRONG-SECRET-VALUE",
+    ADMIN_AUTH[1],
+    "Basic WRONG-AUTH-VALUE",
     "Basic " + base64.b64encode(":".join(ADMIN_AUTH).encode()).decode(),
 )
 
@@ -47,7 +60,18 @@ def request_record(caplog, response, method, path, tool=None):
     assert "\n" not in line and "\r" not in line
     entry = json.loads(line)
     assert isinstance(entry, dict)
-    assert {"ts", "level", "event", "request_id", "method", "path", "tool", "status", "latency_ms", "ok"} <= entry.keys()
+    assert {
+        "ts",
+        "level",
+        "event",
+        "request_id",
+        "method",
+        "path",
+        "tool",
+        "status",
+        "latency_ms",
+        "ok",
+    } <= entry.keys()
     assert datetime.fromisoformat(entry["ts"]).utcoffset() == timedelta(0)
     assert entry["level"] == "info" and entry["event"] == "request"
     assert entry["method"] == method and entry["path"] == path
@@ -63,9 +87,17 @@ def request_record(caplog, response, method, path, tool=None):
 
 def private_payload(payloads, tool):
     payload = dict(payloads[tool])
-    replacements = dict(customer_name="Zelda Quixote", caller_name="Zelda Quixote", last_name="Quixote",
-                        phone="(305) 555-0199", vehicle="1999 Secret Wagon", service="PRIVATE-ISSUE-TEXT",
-                        pickup_location="123 Hidden Street", issue="PRIVATE-ISSUE-TEXT", reason="PRIVATE-REASON-TEXT")
+    replacements = dict(
+        customer_name="Zelda Quixote",
+        caller_name="Zelda Quixote",
+        last_name="Quixote",
+        phone="(305) 555-0199",
+        vehicle="1999 Secret Wagon",
+        service="PRIVATE-ISSUE-TEXT",
+        pickup_location="123 Hidden Street",
+        issue="PRIVATE-ISSUE-TEXT",
+        reason="PRIVATE-REASON-TEXT",
+    )
     payload.update({k: v for k, v in replacements.items() if k in payload})
     if tool == "book_appointment":
         payload["notes"] = "PRIVATE-NOTES-TEXT"
@@ -74,8 +106,21 @@ def private_payload(payloads, tool):
     return payload
 
 
-@pytest.mark.parametrize("case", ["book_appointment", "check_repair_status", "request_tow", "take_message",
-                                  "validation", "auth", "transport", "admin", "admin_auth", "health"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "book_appointment",
+        "check_repair_status",
+        "request_tow",
+        "take_message",
+        "validation",
+        "auth",
+        "transport",
+        "admin",
+        "admin_auth",
+        "health",
+    ],
+)
 def test_request_logging_and_redaction(case, client, payloads, tool_headers, caplog):
     with caplog.at_level(logging.DEBUG):
         tool = case if case in payloads else "take_message"
@@ -98,7 +143,9 @@ def test_request_logging_and_redaction(case, client, payloads, tool_headers, cap
                 headers["X-Tool-Secret"] = "WRONG-SECRET-VALUE"
                 error = "unauthorized"
             if case == "transport":
-                response = client.post(path, content=json.dumps(payload), headers={**headers, "Content-Type": "text/plain"})
+                response = client.post(
+                    path, content=json.dumps(payload), headers={**headers, "Content-Type": "text/plain"}
+                )
                 error = "transport"
             else:
                 response = client.post(path, json=payload, headers=headers)
@@ -120,7 +167,10 @@ def test_request_logging_and_redaction(case, client, payloads, tool_headers, cap
             assert entry["phone"] == "***0199"
 
 
-@pytest.mark.parametrize("request_id,conversation_id", [(None, None), ("", ""), ("bad id", "bad/id"), ("x" * 65, "x" * 65), ("ok.A_1-z", "ok.A_1-z")])
+@pytest.mark.parametrize(
+    "request_id,conversation_id",
+    [(None, None), ("", ""), ("bad id", "bad/id"), ("x" * 65, "x" * 65), ("ok.A_1-z", "ok.A_1-z")],
+)
 def test_correlation_header_validation(client, caplog, request_id, conversation_id):
     headers = {} if request_id is None else {"X-Request-Id": request_id, "X-Conversation-Id": conversation_id}
     with caplog.at_level(logging.DEBUG):
@@ -134,7 +184,16 @@ def test_correlation_header_validation(client, caplog, request_id, conversation_
         assert entry.get("conversation_id") is None
 
 
-@pytest.mark.parametrize("case,status,error", [("unknown", 404, "not_found"), ("malformed", 400, "transport"), ("oversized", 413, "transport"), ("unavailable", 503, "unavailable"), ("reset", 404, "not_found")])
+@pytest.mark.parametrize(
+    "case,status,error",
+    [
+        ("unknown", 404, "not_found"),
+        ("malformed", 400, "transport"),
+        ("oversized", 413, "transport"),
+        ("unavailable", 503, "unavailable"),
+        ("reset", 404, "not_found"),
+    ],
+)
 def test_error_response_records(make_client, tool_headers, caplog, case, status, error):
     client = make_client(ADMIN_PASSWORD=None) if case == "unavailable" else make_client()
     with caplog.at_level(logging.DEBUG):
@@ -156,10 +215,11 @@ def test_error_response_records(make_client, tool_headers, caplog, case, status,
 
 def test_repair_phone_mask(client, tool_headers, caplog):
     with caplog.at_level(logging.DEBUG):
-        response = client.post("/tools/check_repair_status", json={"last_name": "Quixote", "phone": "305-555-0101"}, headers=tool_headers)
+        response = client.post(
+            "/tools/check_repair_status", json={"last_name": "Quixote", "phone": "305-555-0101"}, headers=tool_headers
+        )
     entry = request_record(caplog, response, "POST", "/tools/check_repair_status", "check_repair_status")
     assert entry["phone"] == "***0101"
-
 
 
 def test_international_phone_is_masked(client, payloads, tool_headers, caplog):
@@ -192,10 +252,7 @@ def test_unauthenticated_tool_requests_do_not_log_a_phone(client, payloads, capl
         assert entry["error"] == "unauthorized"
         assert "phone" not in entry
         texts.extend(r.getMessage() for r in caplog.records if r.name.startswith("bear"))
-    assert all(
-        "+50934123456" not in text and "509 3412 3456" not in text and "34123456" not in text
-        for text in texts
-    )
+    assert all("+50934123456" not in text and "509 3412 3456" not in text and "34123456" not in text for text in texts)
 
 
 def test_unauthenticated_bad_transport_still_returns_401(client, payloads, caplog):
@@ -226,7 +283,11 @@ def test_unhandled_error_is_safe(client, payloads, tool_headers, monkeypatch, ca
     with caplog.at_level(logging.DEBUG):
         response = client.post("/tools/take_message", json=payloads["take_message"], headers=tool_headers)
     assert response.status_code == 200
-    assert response.json() == {"ok": False, "error": "internal_error", "message": "Sorry, something went wrong on our end. Let me take a message."}
+    assert response.json() == {
+        "ok": False,
+        "error": "internal_error",
+        "message": "Sorry, something went wrong on our end. Let me take a message.",
+    }
     assert_private(caplog)
     entry = request_record(caplog, response, "POST", "/tools/take_message", "take_message")
     assert entry["error"] == "internal_error"
@@ -240,10 +301,25 @@ def test_stdout_handler_is_idempotent(make_client):
 
 
 def test_request_json_written_to_stdout(tmp_path):
-    env = {**os.environ, "PYTHONPATH": str(ROOT / "backend"), "TOOL_SECRET": "x" * 40,
-           "DATA_FILE": str(tmp_path / "stdout-data.json")}
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(ROOT / "backend"),
+        "TOOL_SECRET": "x" * 40,
+        "DATA_FILE": str(tmp_path / "stdout-data.json"),
+    }
     env.pop("TOOL_DEADLINE_MS", None)
-    result = subprocess.run([sys.executable, "-c", "from main import create_app; from fastapi.testclient import TestClient; c = TestClient(create_app()); assert c.get('/health').status_code == 200; c.close()"], cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from main import create_app; from fastapi.testclient import TestClient; c = TestClient(create_app()); assert c.get('/health').status_code == 200; c.close()",
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     assert result.returncode == 0, result.stderr
     entries = []
     for line in result.stdout.splitlines():

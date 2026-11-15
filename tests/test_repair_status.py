@@ -1,4 +1,5 @@
 """Privacy and verification contract for repair-status lookups."""
+
 import json
 from pathlib import Path
 
@@ -12,8 +13,15 @@ FAIL_MSG = "I couldn't verify that repair order. Offer to take a message for the
 NEED = {"ok": True, "found": False, "needs": ["last_name", "phone_or_ro_number"], "message": NEED_MSG}
 FAIL = {"ok": True, "found": False, "message": FAIL_MSG}
 SUCCESS_KEYS = {
-    "ok", "found", "ro_number", "customer_first_name", "vehicle", "status",
-    "details", "eta", "estimated_balance",
+    "ok",
+    "found",
+    "ro_number",
+    "customer_first_name",
+    "vehicle",
+    "status",
+    "details",
+    "eta",
+    "estimated_balance",
 }
 
 
@@ -23,22 +31,41 @@ def lookup(client, tool_headers, payload):
     return response
 
 
-@pytest.mark.parametrize("payload", [
-    {}, {"ro_number": "1001"}, {"ro_number": "unknown"},
-    {"phone": "3055550101"}, {"phone": "3055550199"},
-    {"phone": "3055550101", "ro_number": "1001"},
-    {"plate": "MIA123"}, {"plate": "unknown"},
-    {"last_name": "Rivera"}, {"last_name": "Unknown"},
-    {"last_name": "Rivera", "plate": "MIA123"},
-    {"last_name": "Unknown", "plate": "unknown"},
-    {"last_name": "   ", "ro_number": "1001"},
-    {"last_name": "Rivera", "phone": "   ", "ro_number": ""},
-], ids=[
-    "empty", "known-ro", "unknown-ro", "known-phone", "unknown-phone",
-    "phone-and-ro", "known-plate", "unknown-plate", "known-name",
-    "unknown-name", "name-and-plate", "unknown-name-and-plate",
-    "blank-last-name", "blank-second-factors",
-])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"ro_number": "1001"},
+        {"ro_number": "unknown"},
+        {"phone": "3055550101"},
+        {"phone": "3055550199"},
+        {"phone": "3055550101", "ro_number": "1001"},
+        {"plate": "MIA123"},
+        {"plate": "unknown"},
+        {"last_name": "Rivera"},
+        {"last_name": "Unknown"},
+        {"last_name": "Rivera", "plate": "MIA123"},
+        {"last_name": "Unknown", "plate": "unknown"},
+        {"last_name": "   ", "ro_number": "1001"},
+        {"last_name": "Rivera", "phone": "   ", "ro_number": ""},
+    ],
+    ids=[
+        "empty",
+        "known-ro",
+        "unknown-ro",
+        "known-phone",
+        "unknown-phone",
+        "phone-and-ro",
+        "known-plate",
+        "unknown-plate",
+        "known-name",
+        "unknown-name",
+        "name-and-plate",
+        "unknown-name-and-plate",
+        "blank-last-name",
+        "blank-second-factors",
+    ],
+)
 def test_missing_factors_return_data_independent_needs(client, tool_headers, payload):
     assert lookup(client, tool_headers, payload).json() == NEED
 
@@ -62,15 +89,27 @@ def test_verification_failure_returns_generic_response(client, tool_headers, pay
 def duplicate_client(make_client, tmp_path):
     # Independent seed data: ambiguity must fail even when both factors match.
     repair = {
-        "ro": "9001", "customer": "Demo Rivera", "phone": "+13055550101",
-        "plate": "DEMO1", "vehicle": "2017 Demo Sedan", "status": "in_progress",
-        "note": "Demo repair", "eta": "Tomorrow", "balance_estimate": "$100",
+        "ro": "9001",
+        "customer": "Demo Rivera",
+        "phone": "+13055550101",
+        "plate": "DEMO1",
+        "vehicle": "2017 Demo Sedan",
+        "status": "in_progress",
+        "note": "Demo repair",
+        "eta": "Tomorrow",
+        "balance_estimate": "$100",
     }
     path = tmp_path / "duplicate-repairs.json"
-    path.write_text(json.dumps({
-        "repairs": [repair, {**repair, "ro": "9002", "customer": "Other Rivera", "plate": "DEMO2"}],
-        "appointments": [], "tows": [], "messages": [],
-    }))
+    path.write_text(
+        json.dumps(
+            {
+                "repairs": [repair, {**repair, "ro": "9002", "customer": "Other Rivera", "plate": "DEMO2"}],
+                "appointments": [],
+                "tows": [],
+                "messages": [],
+            }
+        )
+    )
     return make_client(DATA_FILE=path)
 
 
@@ -86,15 +125,32 @@ def test_all_verification_failures_are_byte_identical(client, duplicate_client, 
     assert responses[0].json() == FAIL
 
 
-@pytest.mark.parametrize("payload,ro,first_name,vehicle", [
-    ({"last_name": "Rivera", "phone": "305-555-0101"}, "1001", "Carlos", "2017 Chevy Malibu"),
-    ({"last_name": "rivera", "ro_number": " 1001 "}, "1001", "Carlos", "2017 Chevy Malibu"),
-    ({"last_name": "RIVERA", "phone": "+1 (305) 555-0101", "ro_number": "1001"}, "1001", "Carlos", "2017 Chevy Malibu"),
-    ({"last_name": "Gomez", "phone": "3055550104"}, "1004", "Ana", "2019 Honda Civic"),
-    ({"last_name": "jean-baptiste", "ro_number": "1002"}, "1002", "Marie", "2015 Toyota Camry"),
-    ({"last_name": "Carlos Rivera", "ro_number": "1001"}, "1001", "Carlos", "2017 Chevy Malibu"),
-    ({"last_name": "Rivera", "ro_number": "1001", "plate": "UNKNOWN"}, "1001", "Carlos", "2017 Chevy Malibu"),
-], ids=["local-phone", "case-and-ro-whitespace", "all-factors", "accent-insensitive", "hyphenated", "full-name", "ignored-extra-plate"])
+@pytest.mark.parametrize(
+    "payload,ro,first_name,vehicle",
+    [
+        ({"last_name": "Rivera", "phone": "305-555-0101"}, "1001", "Carlos", "2017 Chevy Malibu"),
+        ({"last_name": "rivera", "ro_number": " 1001 "}, "1001", "Carlos", "2017 Chevy Malibu"),
+        (
+            {"last_name": "RIVERA", "phone": "+1 (305) 555-0101", "ro_number": "1001"},
+            "1001",
+            "Carlos",
+            "2017 Chevy Malibu",
+        ),
+        ({"last_name": "Gomez", "phone": "3055550104"}, "1004", "Ana", "2019 Honda Civic"),
+        ({"last_name": "jean-baptiste", "ro_number": "1002"}, "1002", "Marie", "2015 Toyota Camry"),
+        ({"last_name": "Carlos Rivera", "ro_number": "1001"}, "1001", "Carlos", "2017 Chevy Malibu"),
+        ({"last_name": "Rivera", "ro_number": "1001", "plate": "UNKNOWN"}, "1001", "Carlos", "2017 Chevy Malibu"),
+    ],
+    ids=[
+        "local-phone",
+        "case-and-ro-whitespace",
+        "all-factors",
+        "accent-insensitive",
+        "hyphenated",
+        "full-name",
+        "ignored-extra-plate",
+    ],
+)
 def test_verified_status_has_only_public_fields(client, tool_headers, payload, ro, first_name, vehicle):
     result = lookup(client, tool_headers, payload).json()
     assert result["ok"] is True
@@ -111,18 +167,25 @@ def test_verified_status_has_only_public_fields(client, tool_headers, payload, r
         assert result["status"] == "waiting on parts"
         assert result["estimated_balance"] == "$480"
     serialized = json.dumps(result, ensure_ascii=False)
-    for private_value in ("Carlos Rivera", "Ana Gómez", "Marie Jean-Baptiste", "+13055550101", "+13055550104", "+17865550102"):
+    for private_value in (
+        "Carlos Rivera",
+        "Ana Gómez",
+        "Marie Jean-Baptiste",
+        "+13055550101",
+        "+13055550104",
+        "+17865550102",
+    ):
         assert private_value not in serialized
 
 
 def test_last_name_strips_format_characters(client, tool_headers):
-    response = lookup(client, tool_headers, {"last_name": "Ri\u200Bvera", "ro_number": "1001"})
+    response = lookup(client, tool_headers, {"last_name": "Ri\u200bvera", "ro_number": "1001"})
     assert response.json()["found"] is True
     assert response.json()["customer_first_name"] == "Carlos"
 
 
 def test_last_name_of_only_format_characters_is_treated_as_missing(client, tool_headers):
-    assert lookup(client, tool_headers, {"last_name": "  \u200B\u202e  ", "ro_number": "1001"}).json() == NEED
+    assert lookup(client, tool_headers, {"last_name": "  \u200b\u202e  ", "ro_number": "1001"}).json() == NEED
 
 
 def test_generator_repair_status_schema_requires_last_name():

@@ -1,6 +1,6 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["backend", "tools"]
+pythonpath = ["backend", "tools", ".github/scripts"]
 addopts = "-q"
 
 [tool.coverage.run]
@@ -10,3 +10,18 @@ branch = true
 
 [tool.coverage.report]
 show_missing = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["backend", "tools", "tests"]
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["main", "make_tools", "create_tools_via_api", "conftest", "test_logging"]
+
+[tool.ruff.format]
+quote-style = "double"

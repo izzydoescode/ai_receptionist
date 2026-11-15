@@ -20,7 +20,7 @@ def test_booking_next_weekday_persists_confirmation(make_client, tmp_path, paylo
     result = post(client, tool_headers, "book_appointment", payloads["book_appointment"])
     assert result["booked"] is True
     assert result["confirmation"].startswith("A")
-    appointment, = json.loads(path.read_text())["appointments"]
+    (appointment,) = json.loads(path.read_text())["appointments"]
     assert appointment["id"] == result["confirmation"]
     for key, value in payloads["book_appointment"].items():
         assert appointment[key] == ("+13055550199" if key == "phone" else value)
@@ -65,7 +65,7 @@ def test_safe_tow_is_logged_with_shop_as_default_destination(make_client, tmp_pa
     result = post(client, tool_headers, "request_tow", payloads["request_tow"])
     assert result["logged"] is True
     assert result["ticket"].startswith("T")
-    tow, = json.loads(path.read_text())["tows"]
+    (tow,) = json.loads(path.read_text())["tows"]
     assert tow["id"] == result["ticket"]
     assert tow["destination"] == (shop_name or "Vice City Auto")
 
@@ -76,10 +76,13 @@ def test_unsafe_tow_starts_with_911_warning(client, payloads, tool_headers):
     assert result["message"].startswith("Caller may be unsafe: tell them to call 911 now")
 
 
-@pytest.mark.parametrize("language,sentence", [
-    ("es", "Alguien que habla español le llamará."),
-    ("ht", "A Creole-speaking team member will call back."),
-])
+@pytest.mark.parametrize(
+    "language,sentence",
+    [
+        ("es", "Alguien que habla español le llamará."),
+        ("ht", "A Creole-speaking team member will call back."),
+    ],
+)
 def test_message_ticket_and_requested_callback_language(client, payloads, tool_headers, language, sentence):
     result = post(client, tool_headers, "take_message", {**payloads["take_message"], "callback_language": language})
     assert result["saved"] is True
@@ -87,13 +90,15 @@ def test_message_ticket_and_requested_callback_language(client, payloads, tool_h
     assert sentence in result["message"]
 
 
-@pytest.mark.parametrize("tool,field", [
-    ("book_appointment", field) for field in
-    ["customer_name", "phone", "vehicle", "service", "preferred_date", "preferred_time"]
-] + [
-    ("request_tow", field) for field in
-    ["customer_name", "phone", "vehicle", "pickup_location", "issue", "is_safe"]
-] + [("take_message", field) for field in ["caller_name", "phone", "reason"]])
+@pytest.mark.parametrize(
+    "tool,field",
+    [
+        ("book_appointment", field)
+        for field in ["customer_name", "phone", "vehicle", "service", "preferred_date", "preferred_time"]
+    ]
+    + [("request_tow", field) for field in ["customer_name", "phone", "vehicle", "pickup_location", "issue", "is_safe"]]
+    + [("take_message", field) for field in ["caller_name", "phone", "reason"]],
+)
 def test_missing_required_tool_field_returns_validation_envelope(client, payloads, tool_headers, tool, field):
     payload = payloads[tool].copy()
     del payload[field]

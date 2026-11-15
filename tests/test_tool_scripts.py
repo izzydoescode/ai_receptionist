@@ -18,6 +18,7 @@ def load_script(name):
         pytest.fail(f"tools/{name}.py has no main(); it is not import-safe yet")
     return importlib.import_module(name)
 
+
 REQUIRED = {
     "book_appointment": ["customer_name", "phone", "vehicle", "service", "preferred_date", "preferred_time"],
     "check_repair_status": ["last_name"],
@@ -86,6 +87,7 @@ def test_api_creator_posts_each_generated_config_with_dummy_key(generated_tools,
         assert {key.lower(): value for key, value in request.header_items()}["xi-api-key"] == dummy_key
         assert json.loads(request.data) == {"tool_config": json.loads((generated_tools / f"{name}.json").read_text())}
 
+
 def test_tool_descriptions_explain_ok_false():
     tools = load_script("make_tools").TOOLS
     for name, (description, _props, _required) in tools.items():
@@ -106,4 +108,3 @@ def test_prompt_tells_agent_what_to_do_when_a_tool_fails():
     assert "timeout" in prompt
     assert "internal_error" in prompt
     assert "re-ask" in prompt.lower()
-

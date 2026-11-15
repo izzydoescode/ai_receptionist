@@ -1,0 +1,44 @@
+name: tests
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: backend/requirements*
+      - run: python -m pip install --require-hashes -r backend/requirements-dev.lock
+      - name: Run tests with coverage
+        run: |
+          set -o pipefail
+          python -m pytest --cov --cov-report=term-missing --cov-report=xml --cov-fail-under=80 | tee coverage-output.txt
+      - name: Summarize coverage
+        if: always()
+        run: |
+          if [[ -f coverage-output.txt ]]; then
+            grep '^TOTAL' coverage-output.txt >> "$GITHUB_STEP_SUMMARY" || true
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: coverage-py${{ matrix.python-version }}
+          path: coverage.xml
+          retention-days: 14
