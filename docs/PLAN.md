@@ -232,12 +232,18 @@ Acceptance: `docker build` succeeds, `docker run` with env answers `/health`, an
 
 ## Phase F: Scripted test-call suite (EN/ES)
 
-### Task 12: Deterministic flow tests
+### Task 12: Deterministic flow tests (done on `dev/scenario-call-tests`)
 - `tests/scenarios/*.yaml`, one per flow and language: `en_status`, `es_status`, `en_book`, `es_book`, `en_book_full_slot`, `es_after_hours`, `en_tow_unsafe`, `es_tow_safe`, `en_message`, `es_message`, `en_transfer_request`, `en_unverified_status`.
 - Each scenario lists the tool calls the agent should make with their arguments, and the expected response fields.
 - A pytest runner replays them against the backend and checks responses, DB side effects and `/admin` rows.
 
 Acceptance: 12 or more scenarios pass. Each runs in under 1 s. Spanish scenarios use Spanish free-text fields and check that `language="es"` is persisted.
+
+*Decisions at implementation:*
+- *The format is documented in `tests/scenarios/README.md`. Dates are placeholders like `{next_monday}`. Rows are matched as subsets on the shop's board, audit events are checked too, and `/admin` is checked for text.*
+- *`en_transfer_request` replays the urgent `take_message` taken when a transfer fails or the shop is closed. The live transfer is an ElevenLabs system tool with no backend call.*
+- *`es_after_hours` tries Sunday, gets three alternatives, then leaves a Spanish message. `es_status` checks an accent-insensitive last-name match.*
+- *Not covered here (needs a key): whether the live agent produces these calls from speech. See Task 13.*
 
 ### Task 13: Live agent rehearsal script (manual, needs a key)
 - `scripts/rehearse.py` uses the ElevenLabs agent testing or simulated-conversation API (*endpoint names to be confirmed against current docs at implementation time*). It plays each scenario's caller lines in text mode against the real agent and asserts which tools were called. Run each scenario 3 times, because routing is probabilistic.

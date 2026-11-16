@@ -1,0 +1,21 @@
+name: en_other_shop
+language: en
+description: A valid shop_id other than the default files rows under that shop only.
+shops:
+  - {}
+  - {shop_id: other-shop, name: Other Shop}
+calls:
+  - tool: take_message
+    args:
+      shop_id: other-shop
+      caller_name: Maya Chen
+      phone: "3055550190"
+      reason: Need a ride back
+    expect: {ok: true, saved: true}
+db_shop_id: other-shop
+db_counts: {messages: 1}
+db:
+  messages:
+    - {caller_name: Maya Chen}
+db_counts_by_shop:
+  vice-city-auto: {messages: 0}

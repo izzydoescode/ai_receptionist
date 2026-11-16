@@ -1,0 +1,15 @@
+name: es_status
+language: es
+description: Spanish caller ("¿Ya está listo mi carro?") verifies with a last name typed without the accent plus the RO number.
+calls:
+  - tool: check_repair_status
+    args: {last_name: Gomez, ro_number: "1004"}
+    expect:
+      ok: true
+      found: true
+      ro_number: "1004"
+      customer_first_name: Ana
+      status: waiting for the customer's approval on the estimate
+    expect_contains: {details: A/C compressor}
+audit:
+  - {event: repair_status.lookup, outcome: verified}

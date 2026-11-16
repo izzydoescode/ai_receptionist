@@ -1,0 +1,25 @@
+name: en_book_full_slot
+language: en
+description: The demo shop has 2 bays per slot. A third caller for the same hour is offered alternatives.
+calls:
+  - tool: book_appointment
+    repeat: 2
+    args:
+      customer_name: Earlier Caller
+      phone: "3055550143"
+      vehicle: 2016 Honda Accord
+      service: brakes
+      preferred_date: "{next_tuesday}"
+      preferred_time: "09:00"
+    expect: {booked: true}
+  - tool: book_appointment
+    args:
+      customer_name: Sam Patel
+      phone: "3055550144"
+      vehicle: 2020 Ford Escape
+      service: check engine light
+      preferred_date: "{next_tuesday}"
+      preferred_time: "09:00"
+    expect: {ok: true, booked: false, message: That slot is full.}
+    expect_length: {alternatives: 3}
+db_counts: {appointments: 2}
