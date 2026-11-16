@@ -107,6 +107,10 @@ pip-compile --allow-unsafe --generate-hashes --no-strip-extras --output-file=bac
 | `ADMIN_PASSWORD` | for `/admin` | none | HTTP Basic password. If unset, `/admin` returns 503. |
 | `BEAR_ENV` | no | none | Set to `dev` for local hacking: allows starting without `TOOL_SECRET` (tools are then open, with a warning) and enables `POST /admin/reset`. Never set it in production. |
 | `TOOL_DEADLINE_MS` | no | `4000` | Deadline in ms for `POST /tools/*` (positive integer; anything else stops startup). On timeout the tool returns `200 {"ok": false, "error": "timeout", ...}` and the abandoned worker can no longer save. `/health` and `/admin` have no deadline. |
+| `ALERTS_MODE` | no | `log` | `off`, `log` (one log line per booking, message or tow, with no caller details; nothing delivered) or `email` (also emails the shop file's `alerts.email` list, in the background, never failing the tool call). |
+| `ALERTS_EMAIL_API_KEY` | with `ALERTS_MODE=email` | none | Resend API key. A secret: never log or commit it. |
+| `ALERTS_EMAIL_FROM` | with `ALERTS_MODE=email` | none | Sender, e.g. `Bear <alerts@your-domain>`, on a domain verified in Resend. |
+| `PUBLIC_BASE_URL` | no | none | Public https origin; used by `tools/make_tools.py` and for the `/admin` link in alert emails. |
 | `DATABASE_URL` | no | `sqlite:///./vicecity.db` | SQLAlchemy database URL, relative to the working directory for SQLite. Never log it. |
 | `SHOP_ID` | no | `vice-city-auto` | Default shop used by tools; lowercase letters, digits and hyphens, starting with a letter or digit, up to 64 characters. It must have a file in `SHOPS_DIR`. |
 | `SHOPS_DIR` | no | the repo's `shops/` | Folder with one `<shop_id>.yaml` per shop. Every file is validated at startup and any problem stops the app. |

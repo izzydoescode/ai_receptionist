@@ -57,6 +57,11 @@ first_messages:
   es: "Gracias por llamar a Vice City Auto, le habla Bear, el asistente virtual del taller. Solo para que sepa, esta llamada puede ser grabada. ¿En qué le puedo ayudar?"
   fr: "Bonjour, vous êtes bien chez Vice City Auto, je suis Bear, l'assistant virtuel du garage. Juste pour vous le dire, l'appel peut être enregistré. Comment puis-je vous aider ?"
 
+# Staff who get an email for every booking, message and tow (ALERTS_MODE=email).
+# Real addresses go only in the deployed shop file, never in git.
+alerts:
+  email: []
+
 features:
   sms_confirmations: false
   tow_dispatch: false

@@ -38,7 +38,8 @@ from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from bear.admin import build_admin_router
-from bear.alerts import send_staff_alert, warn_if_prod_log_only
+from bear.alerts import MODES as ALERT_MODES
+from bear.alerts import AlertTarget, StaffAlerter, resend_sender, warn_if_prod_log_only
 from bear.db import check_schema, make_engine
 from bear.eta import describe_eta
 from bear.initiation import InitRequest, shop_initiation, unknown_initiation
@@ -78,6 +79,9 @@ class Settings:
     tool_deadline_ms: int = 4000
     admin_user: str = "admin"
     alerts_mode: str = "log"
+    alerts_email_api_key: str = ""
+    alerts_email_from: str = ""
+    public_base_url: str = ""
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -88,8 +92,8 @@ class Settings:
         except ValueError:
             raise RuntimeError("TOOL_DEADLINE_MS must be a positive integer") from None
         alerts_mode = os.getenv("ALERTS_MODE", "log")
-        if alerts_mode not in {"log", "off"}:
-            raise RuntimeError("ALERTS_MODE must be log or off")
+        if alerts_mode not in ALERT_MODES:
+            raise RuntimeError("ALERTS_MODE must be off, log or email")
         return cls(
             tool_deadline_ms=deadline_ms,
             tool_secret=os.getenv("TOOL_SECRET", ""),
@@ -103,6 +107,9 @@ class Settings:
             shop_id=os.getenv("SHOP_ID", "vice-city-auto"),
             shops_dir=os.getenv("SHOPS_DIR") or str(DEFAULT_SHOPS_DIR),
             alerts_mode=alerts_mode,
+            alerts_email_api_key=os.getenv("ALERTS_EMAIL_API_KEY", ""),
+            alerts_email_from=os.getenv("ALERTS_EMAIL_FROM", ""),
+            public_base_url=os.getenv("PUBLIC_BASE_URL", "").rstrip("/"),
         )
 
 
@@ -508,6 +515,8 @@ def create_app() -> FastAPI:
     if not settings.post_call_webhook_secret:
         logging.getLogger("bear").warning("POST_CALL_WEBHOOK_SECRET is unset; post-call summaries are disabled")
     warn_if_prod_log_only(settings.alerts_mode, settings.env)
+    if settings.alerts_mode == "email" and not (settings.alerts_email_api_key and settings.alerts_email_from):
+        raise RuntimeError("ALERTS_MODE=email needs ALERTS_EMAIL_API_KEY and ALERTS_EMAIL_FROM")
 
     if not re.fullmatch(SHOP_ID_PATTERN, settings.shop_id):
         raise RuntimeError("invalid SHOP_ID")
@@ -533,6 +542,7 @@ def create_app() -> FastAPI:
         try:
             yield
         finally:
+            alerter.close()
             engine.dispose()
 
     app = FastAPI(lifespan=lifespan, title=f"{default_shop.name} AI Receptionist tools", version="0.1.0")
@@ -540,6 +550,31 @@ def create_app() -> FastAPI:
     app.state.shops = shops
     shops_by_number = {shop.twilio_number: shop for shop in shops.values()}
     store = app.state.store = Store(engine, write_guard=check_deadline)
+    alerter = app.state.alerter = StaffAlerter(
+        settings.alerts_mode,
+        email_sender=(
+            resend_sender(settings.alerts_email_api_key, settings.alerts_email_from)
+            if settings.alerts_mode == "email"
+            else None
+        ),
+        record_outcome=lambda shop_id, public_id, outcome: store.record_audit(
+            shop_id, "alert.email", public_id, outcome=outcome
+        ),
+    )
+    if settings.alerts_mode == "email":
+        for shop in shops.values():
+            if not shop.alerts.email:
+                logging.getLogger("bear").warning(
+                    "ALERTS_MODE=email but shop %s lists no alerts.email recipients", shop.shop_id
+                )
+
+    def alert_target(shop_id: str) -> AlertTarget:
+        # Messages from numbers no shop owns go to the default shop's staff.
+        shop = shops.get(shop_id, default_shop)
+        admin_url = f"{settings.public_base_url}/admin?shop={shop_id}" if settings.public_base_url else None
+        name = shop.name if shop_id in shops else "Unrecognized number"
+        return AlertTarget(shop_id=shop_id, shop_name=name, recipients=list(shop.alerts.email), admin_url=admin_url)
+
     app.add_middleware(ToolTransportMiddleware, tool_secret=settings.tool_secret)
     app.add_middleware(
         RequestLoggingMiddleware, deadline_ms=settings.tool_deadline_ms, default_shop_id=settings.shop_id
@@ -721,7 +756,20 @@ def create_app() -> FastAPI:
                 "alternatives": next_slots(shop, max(dt, datetime.now(shop.tz))),
             }
         when = dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " ")
-        send_staff_alert(settings.alerts_mode, "booking", shop_id=shop.shop_id, public_id=appt["public_id"])
+        alerter.send(
+            "booking",
+            alert_target(shop.shop_id),
+            appt["public_id"],
+            {
+                "name": req.customer_name,
+                "phone": req.phone,
+                "vehicle": req.vehicle,
+                "service": req.service,
+                "when": when,
+                "notes": req.notes,
+                "language": req.language,
+            },
+        )
         return {
             "ok": True,
             "booked": True,
@@ -803,7 +851,21 @@ def create_app() -> FastAPI:
         fields = req.model_dump(exclude={"shop_id"})
         fields["destination"] = req.destination or shop.name
         tow = store.create_tow(shop.shop_id, **fields, status="dispatch_requested")
-        send_staff_alert(settings.alerts_mode, "tow", shop_id=shop.shop_id, public_id=tow["public_id"])
+        alerter.send(
+            "tow",
+            alert_target(shop.shop_id),
+            tow["public_id"],
+            {
+                "name": req.customer_name,
+                "phone": req.phone,
+                "vehicle": req.vehicle,
+                "pickup_location": req.pickup_location,
+                "issue": req.issue,
+                "is_safe": req.is_safe,
+                "destination": fields["destination"],
+                "language": req.language,
+            },
+        )
         if shop.features.tow_dispatch:
             msg = (
                 "I've gone ahead and logged the tow. A dispatcher will call you back "
@@ -828,7 +890,19 @@ def create_app() -> FastAPI:
                 return UNKNOWN_SHOP
             shop_id, staffed = shop.shop_id, shop.callback_languages
         m = store.create_message(shop_id, **req.model_dump(exclude={"shop_id"}))
-        send_staff_alert(settings.alerts_mode, "message", shop_id=shop_id, public_id=m["public_id"])
+        alerter.send(
+            "message",
+            alert_target(shop_id),
+            m["public_id"],
+            {
+                "name": req.caller_name,
+                "phone": req.phone,
+                "reason": req.reason,
+                "urgency": req.urgency,
+                "callback_language": req.callback_language,
+                "vehicle": req.vehicle,
+            },
+        )
         language = req.callback_language
         if language == "en":
             lang = ""
