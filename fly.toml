@@ -1,0 +1,47 @@
+# Fly.io config for the Bear backend. Not deployed yet; see docs/DEPLOY.md.
+# Secrets (TOOL_SECRET, INIT_WEBHOOK_SECRET, ADMIN_PASSWORD, DATABASE_URL) are set
+# with `fly secrets set`, never here.
+
+app = "bear-receptionist"  # must be unique on Fly; change it if the name is taken
+primary_region = "iad"
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Runs once per deploy on a temporary machine; a failed migration stops the deploy.
+  release_command = "alembic upgrade head"
+  strategy = "rolling"
+
+[env]
+  BEAR_MIGRATE_ON_BOOT = "0"
+  # Only Fly's proxy can reach the app's public port, so trust its X-Forwarded-* headers.
+  FORWARDED_ALLOW_IPS = "*"
+  SHOP_ID = "vice-city-auto"
+  TOOL_DEADLINE_MS = "4000"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Always on: the ElevenLabs call-start webhook fires while the phone rings.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "15s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

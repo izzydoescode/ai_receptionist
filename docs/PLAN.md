@@ -214,7 +214,7 @@ Acceptance: a test checks that every `first_messages` value in each shop config 
 
 ## Phase E: Deployment
 
-### Task 11: Containerize and write deploy docs (no deploy)
+### Task 11: Containerize and write deploy docs (no deploy) (done on `dev/docker-and-fly-deploy`)
 - Add a `Dockerfile`: slim Python, non-root user, `uvicorn --proxy-headers`, healthcheck on `/health`.
 - Add `docs/DEPLOY.md` with the options below and env var lists. Run Alembic migrations on boot or as a release command.
 
@@ -229,6 +229,13 @@ Acceptance: a test checks that every `first_messages` value in each shop config 
 Neon free tier: 100 projects, 100 CU-hours per project per month, 1 GB storage per project, scale-to-zero after 5 min that can't be disabled (https://neon.com/faqs/free-plan-limits-and-quotas). Other sources: https://docs.fly.io/about/pricing, https://docs.fly.io/about/free-waiver, https://render.com/docs/free, https://docs.netlify.com/build/functions/get-started, https://supabase.com/pricing.
 
 Acceptance: `docker build` succeeds, `docker run` with env answers `/health`, and the docs list every required env var. **No account creation or deploy in this task.**
+
+*Decisions at implementation:*
+- *The image is two-stage on `python:3.13-slim-trixie`, pinned by digest, with Dependabot watching it. It runs as uid 10001 on port 8080, and its HEALTHCHECK uses only the standard library (the slim image has no curl). It defaults to SQLite at `/data/bear.db`.*
+- *Migrations run as Fly's `release_command`, so a failed migration stops the deploy. The entrypoint can also migrate on boot (`BEAR_MIGRATE_ON_BOOT=1`) for a plain `docker run`.*
+- *`fly.toml`: one always-on shared-cpu-1x/512 MB machine in `iad` (still under the $5 waiver). `FORWARDED_ALLOW_IPS=*` so `--proxy-headers` trusts Fly's proxy. Secrets only go through `fly secrets set`.*
+- *Neon uses the direct connection string, not the pooler, to avoid PgBouncer quirks with psycopg prepared statements. `/health` doesn't query the database, so Neon's scale-to-zero stays on.*
+- *A CI `container` job builds the image and smoke-tests it on SQLite and Postgres, because the box running these tasks has no Docker. Real shop YAML goes on a Fly volume via `SHOPS_DIR`, never in the repo.*
 
 ## Phase F: Scripted test-call suite (EN/ES)
 
