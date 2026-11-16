@@ -78,7 +78,7 @@ Requires Python 3.11+ (tested on 3.13).
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install --require-hashes -r backend/requirements-dev.lock   # pinned runtime + dev deps
-cp .env.example .env                               # then replace both CHANGE_ME values; never commit .env
+cp .env.example .env                               # then replace every CHANGE_ME value; never commit .env
 set -a && . ./.env && set +a                       # load the variables into this shell
 cd backend
 alembic upgrade head                              # required before app startup
@@ -100,6 +100,8 @@ pip-compile --allow-unsafe --generate-hashes --no-strip-extras --output-file=bac
 | Variable | Required | Default | What it does |
 |---|---|---|---|
 | `TOOL_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret every `/tools/*` call must send in `X-Tool-Secret`. Min 32 chars. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
+| `INIT_WEBHOOK_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret ElevenLabs must send in `X-Init-Webhook-Secret` to `POST /elevenlabs/init`. Min 32 chars and different from `TOOL_SECRET`. |
+| `INIT_WEBHOOK_SECRET_PREVIOUS` | no | none | Previous init secret, also accepted during rotation. If set, same 32-char and not-`TOOL_SECRET` rules as `INIT_WEBHOOK_SECRET`. |
 | `ADMIN_USER` | no | `admin` | HTTP Basic username for `/admin`. |
 | `ADMIN_PASSWORD` | for `/admin` | none | HTTP Basic password. If unset, `/admin` returns 503. |
 | `BEAR_ENV` | no | none | Set to `dev` for local hacking: allows starting without `TOOL_SECRET` (tools are then open, with a warning) and enables `POST /admin/reset`. Never set it in production. |
@@ -108,7 +110,7 @@ pip-compile --allow-unsafe --generate-hashes --no-strip-extras --output-file=bac
 | `SHOP_ID` | no | `vice-city-auto` | Default shop used by tools; lowercase letters, digits and hyphens, starting with a letter or digit, up to 64 characters. It must have a file in `SHOPS_DIR`. |
 | `SHOPS_DIR` | no | the repo's `shops/` | Folder with one `<shop_id>.yaml` per shop. Every file is validated at startup and any problem stops the app. |
 
-Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `GET /admin` (HTTP Basic), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or RO number** on the ticket.
+Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `POST /elevenlabs/init` (call-start webhook, needs `X-Init-Webhook-Secret`; see `docs/ELEVENLABS_INIT.md`), `GET /admin` (HTTP Basic, `?shop=<id>` or `?shop=unknown`), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or RO number** on the ticket.
 
 ### Postgres
 Set `DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE` in your environment, then run `alembic upgrade head` from `backend/` before starting the app. `postgres://` and `postgresql://` URLs are also normalized to psycopg. For TLS, append `?sslmode=require`. Keep real credentials out of source control and logs.

@@ -97,6 +97,7 @@ messages = Table(
     *common_columns(),
     *text_columns("caller_name", "phone", "reason", "urgency", "callback_language"),
     Column("vehicle", Text),
+    Column("conversation_id", Text),
 )
 audit_events = Table(
     "audit_events",

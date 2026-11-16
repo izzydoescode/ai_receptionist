@@ -30,15 +30,16 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 
 from bear.db import check_schema, make_engine
+from bear.initiation import InitRequest, shop_initiation, unknown_initiation
 from bear.seed import DEMO_REPAIR_ORDERS
-from bear.shops import SHOP_ID_PATTERN, ShopConfig, load_shops
+from bear.shops import SHOP_ID_PATTERN, UNKNOWN_SHOP_ID, ShopConfig, load_shops
 from bear.store import SlotFull, Store
 
 DEFAULT_SHOPS_DIR = Path(__file__).resolve().parent.parent / "shops"
@@ -52,6 +53,8 @@ class Settings:
     database_url: str
     shop_id: str
     shops_dir: str = str(DEFAULT_SHOPS_DIR)
+    init_webhook_secret: str = ""
+    init_webhook_secret_previous: str = ""
     tool_deadline_ms: int = 4000
     admin_user: str = "admin"
 
@@ -66,6 +69,8 @@ class Settings:
         return cls(
             tool_deadline_ms=deadline_ms,
             tool_secret=os.getenv("TOOL_SECRET", ""),
+            init_webhook_secret=os.getenv("INIT_WEBHOOK_SECRET", ""),
+            init_webhook_secret_previous=os.getenv("INIT_WEBHOOK_SECRET_PREVIOUS", ""),
             env=os.getenv("BEAR_ENV", ""),
             admin_user=os.getenv("ADMIN_USER", "admin"),
             admin_password=os.getenv("ADMIN_PASSWORD", ""),
@@ -87,7 +92,7 @@ STATUS_TEXT = {
 UNKNOWN_SHOP = {
     "ok": False,
     "error": "unknown_shop",
-    "message": "Sorry, this line isn't set up in our system yet. Ask the caller to call back later.",
+    "message": "I can't do that on this line. Offer to take a message so someone can call back.",
 }
 
 REPAIR_STATUS_NEEDS = {
@@ -223,6 +228,7 @@ class TakeMessage(ToolRequest):
     urgency: Urgency = "normal"
     callback_language: Language = "en"
     vehicle: OptionalName | None = None
+    conversation_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._-]{1,64}$")
 
 
 def invalid_input(field, message):
@@ -413,7 +419,13 @@ class RequestLoggingMiddleware:
                     entry["field"] = result["field"]
             if error:
                 entry["error"] = error
-            tool_body = scope.get("state", {}).get("bear_body", {})
+            state = scope.get("state", {})
+            tool_body = state.get("bear_body", {})
+            if "bear_shop_id" in state:
+                # Set by the init webhook after auth; the dialed and calling numbers are never logged.
+                entry["shop_id"] = state["bear_shop_id"]
+                if "conversation_id" not in entry and _CORRELATION_ID.fullmatch(state["bear_conversation_id"]):
+                    entry["conversation_id"] = state["bear_conversation_id"]
             if is_tool:
                 shop_id = tool_body.get("shop_id")
                 shop_id = self.default_shop_id if shop_id is None else shop_id
@@ -497,6 +509,22 @@ def create_app() -> FastAPI:
         raise RuntimeError("TOOL_SECRET must be set to at least 32 characters (or set BEAR_ENV=dev for local testing)")
     if not settings.tool_secret:
         logging.getLogger("bear").warning("TOOL_SECRET is unset; tool authentication is disabled in dev")
+    if settings.env != "dev" and len(settings.init_webhook_secret) < 32:
+        raise RuntimeError(
+            "INIT_WEBHOOK_SECRET must be set to at least 32 characters (or set BEAR_ENV=dev for local testing)"
+        )
+    if settings.init_webhook_secret and settings.init_webhook_secret == settings.tool_secret:
+        raise RuntimeError("INIT_WEBHOOK_SECRET must differ from TOOL_SECRET")
+    if settings.init_webhook_secret_previous:
+        if settings.env != "dev" and len(settings.init_webhook_secret_previous) < 32:
+            raise RuntimeError(
+                "INIT_WEBHOOK_SECRET_PREVIOUS must be set to at least 32 characters "
+                "(or set BEAR_ENV=dev for local testing)"
+            )
+        if settings.init_webhook_secret_previous == settings.tool_secret:
+            raise RuntimeError("INIT_WEBHOOK_SECRET_PREVIOUS must differ from TOOL_SECRET")
+    if not settings.init_webhook_secret:
+        logging.getLogger("bear").warning("INIT_WEBHOOK_SECRET is unset; the init webhook is open in dev")
 
     if not re.fullmatch(SHOP_ID_PATTERN, settings.shop_id):
         raise RuntimeError("invalid SHOP_ID")
@@ -527,6 +555,7 @@ def create_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan, title=f"{default_shop.name} AI Receptionist tools", version="0.1.0")
     app.state.settings = settings
     app.state.shops = shops
+    shops_by_number = {shop.twilio_number: shop for shop in shops.values()}
     store = app.state.store = Store(engine, write_guard=check_deadline)
     app.add_middleware(ToolTransportMiddleware, tool_secret=settings.tool_secret)
     app.add_middleware(
@@ -569,12 +598,27 @@ def create_app() -> FastAPI:
         if not (user_ok & password_ok):
             raise unauthorized
 
+    def check_init_secret(x_init_webhook_secret: str | None = Header(default=None)):
+        if not settings.init_webhook_secret:
+            return
+        provided = (x_init_webhook_secret or "").encode("utf-8")
+        matched = hmac.compare_digest(provided, settings.init_webhook_secret.encode("utf-8"))
+        if settings.init_webhook_secret_previous:
+            matched = hmac.compare_digest(provided, settings.init_webhook_secret_previous.encode("utf-8")) | matched
+        if not matched:
+            raise HTTPException(status_code=401, detail="bad init webhook secret")
+
     def digits(s: str | None) -> str:
         return re.sub(r"\D", "", s or "")[-10:]
 
     # ---------- helpers ----------
     def resolve_shop(shop_id: str | None) -> ShopConfig | None:
         return shops.get(settings.shop_id if shop_id is None else shop_id)
+
+    def missing_shop(shop_id: str | None) -> dict | None:
+        if shop_id is None and not (settings.env == "dev" and len(shops) == 1):
+            return invalid_input("shop_id", "The shop id is missing; check the tool configuration.")
+        return None
 
     def slot_problem(shop: ShopConfig, dt: datetime) -> str | None:
         reason = shop.closed_reason(dt)
@@ -597,8 +641,35 @@ def create_app() -> FastAPI:
     def health():
         return {"ok": True, "time": datetime.now(default_shop.tz).isoformat()}
 
+    @app.post("/elevenlabs/init", dependencies=[Depends(check_init_secret)])
+    async def elevenlabs_init(request: Request):
+        """Conversation-initiation webhook: pick the shop by the dialed number before the call connects."""
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > 16384:
+                raise HTTPException(status_code=413, detail="request body too large")
+        try:
+            call = InitRequest.model_validate_json(bytes(raw))
+        except ValidationError:
+            raise HTTPException(status_code=400, detail="invalid JSON body") from None
+        try:
+            number = normalize_phone(call.called_number)
+        except ValueError:
+            number = call.called_number
+        shop = shops_by_number.get(number)
+        request.state.bear_shop_id = UNKNOWN_SHOP_ID if shop is None else shop.shop_id
+        request.state.bear_conversation_id = call.conversation_id
+        if shop is None:
+            reply = unknown_initiation()
+        else:
+            reply = shop_initiation(shop, datetime.now(shop.tz).date())
+        return JSONResponse(reply.model_dump(exclude_none=True))
+
     @app.post("/tools/book_appointment", dependencies=[Depends(check_secret)])
     def book_appointment(req: BookAppointment):
+        if error := missing_shop(req.shop_id):
+            return error
         shop = resolve_shop(req.shop_id)
         if shop is None:
             return UNKNOWN_SHOP
@@ -634,6 +705,8 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/check_repair_status", dependencies=[Depends(check_secret)])
     def check_repair_status(req: RepairStatus):
+        if error := missing_shop(req.shop_id):
+            return error
         shop = resolve_shop(req.shop_id)
         if shop is None:
             return UNKNOWN_SHOP
@@ -675,6 +748,8 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/request_tow", dependencies=[Depends(check_secret)])
     def request_tow(req: TowRequest):
+        if error := missing_shop(req.shop_id):
+            return error
         shop = resolve_shop(req.shop_id)
         if shop is None:
             return UNKNOWN_SHOP
@@ -688,10 +763,17 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/take_message", dependencies=[Depends(check_secret)])
     def take_message(req: TakeMessage):
-        shop = resolve_shop(req.shop_id)
-        if shop is None:
-            return UNKNOWN_SHOP
-        m = store.create_message(shop.shop_id, **req.model_dump(exclude={"shop_id"}))
+        # Calls to a number no shop owns (Task 8) may still leave a message, filed under "unknown".
+        if error := missing_shop(req.shop_id):
+            return error
+        if req.shop_id == UNKNOWN_SHOP_ID:
+            shop_id = UNKNOWN_SHOP_ID
+        else:
+            shop = resolve_shop(req.shop_id)
+            if shop is None:
+                return UNKNOWN_SHOP
+            shop_id = shop.shop_id
+        m = store.create_message(shop_id, **req.model_dump(exclude={"shop_id"}))
         lang = {
             "ht": " A Creole-speaking team member will call back.",
             "es": " Alguien que habla español le llamará.",
@@ -709,16 +791,20 @@ def create_app() -> FastAPI:
         shop = settings.shop_id if shop is None else shop
         if not re.fullmatch(SHOP_ID_PATTERN, shop):
             raise HTTPException(status_code=400, detail="invalid shop")
-        if shop not in shops:
+        if shop == UNKNOWN_SHOP_ID:
+            # Messages from numbers no shop owns, shown in the default shop's time zone.
+            board_name, board_tz = "Unrecognized numbers", default_shop.tz
+        elif shop in shops:
+            board_name, board_tz = shops[shop].name, shops[shop].tz
+        else:
             raise HTTPException(status_code=404, detail="unknown shop")
-        config = shops[shop]
         db = store.board(shop, 50)
 
         def display(value):
             if value is None:
                 return ""
             if isinstance(value, datetime):
-                return value.astimezone(config.tz).strftime("%Y-%m-%d %H:%M %Z")
+                return value.astimezone(board_tz).strftime("%Y-%m-%d %H:%M %Z")
             return str(value)
 
         def table(rows, cols):
@@ -729,13 +815,13 @@ def create_app() -> FastAPI:
             )
             return f"<table><tr>{h}</tr>{b}</table>"
 
-        return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(config.name), quote=True)} board</title>
+        return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(board_name), quote=True)} board</title>
     <style>body{{font-family:system-ui;margin:24px}}table{{border-collapse:collapse;margin-bottom:24px}}
     td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}</style></head><body>
-    <h1>{html.escape(str(config.name), quote=True)}: AI receptionist live board</h1>
+    <h1>{html.escape(str(board_name), quote=True)}: AI receptionist live board</h1>
     <h2>Appointments</h2>{table(db["appointments"], ["public_id", "slot_start", "customer_name", "phone", "vehicle", "service", "language"])}
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
-    <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "vehicle", "reason", "urgency", "callback_language"])}
+    <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "vehicle", "reason", "urgency", "callback_language", "conversation_id"])}
     <h2>Open repair orders</h2>{table(db["repair_orders"], ["ro_number", "customer_name", "vehicle", "status", "eta"])}
     </body></html>"""
 

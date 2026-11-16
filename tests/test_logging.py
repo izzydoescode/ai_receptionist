@@ -194,7 +194,12 @@ def test_correlation_header_validation(client, caplog, request_id, conversation_
     ],
 )
 def test_error_response_records(make_client, tool_headers, caplog, case, status, error):
-    client = make_client(ADMIN_PASSWORD=None) if case == "unavailable" else make_client()
+    if case == "unavailable":
+        client = make_client(ADMIN_PASSWORD=None)
+    elif case == "reset":
+        client = make_client(BEAR_ENV="prod")
+    else:
+        client = make_client()
     with caplog.at_level(logging.DEBUG):
         if case in {"unavailable", "reset"}:
             method, path = ("GET", "/admin") if case == "unavailable" else ("POST", "/admin/reset")
@@ -304,6 +309,7 @@ def test_request_json_written_to_stdout(tmp_path):
         **os.environ,
         "PYTHONPATH": str(ROOT / "backend"),
         "TOOL_SECRET": "x" * 40,
+        "INIT_WEBHOOK_SECRET": "y" * 40,
         "DATABASE_URL": f"sqlite:///{tmp_path}/stdout.db",
     }
     env.pop("TOOL_DEADLINE_MS", None)
@@ -333,8 +339,8 @@ def test_request_json_written_to_stdout(tmp_path):
 @pytest.mark.parametrize(
     "body_shop,logged_shop,error",
     [
-        (None, "vice-city-auto", None),
-        ("null", "vice-city-auto", None),
+        (None, "vice-city-auto", "invalid_input"),
+        ("null", "vice-city-auto", "invalid_input"),
         ("west-shop", "west-shop", None),
         ("no-such-shop", "no-such-shop", "unknown_shop"),
         ("Bad Shop", None, "invalid_input"),
@@ -359,3 +365,29 @@ def test_non_tool_logs_have_no_shop_id(client, caplog):
     with caplog.at_level(logging.INFO):
         response = client.get("/health")
     assert "shop_id" not in request_record(caplog, response, "GET", "/health")
+
+
+@pytest.mark.parametrize(
+    "called,headers_ok,shop",
+    [("+13055550110", True, "vice-city-auto"), ("+13055550999", True, "unknown"), ("+13055550110", False, None)],
+)
+def test_init_webhook_logs_shop_and_conversation_but_no_numbers(make_client, caplog, called, headers_ok, shop):
+    from conftest import INIT_SECRET
+
+    client = make_client(_seed=False)
+    headers = {"X-Init-Webhook-Secret": INIT_SECRET if headers_ok else "wrong"}
+    payload = {
+        "caller_id": "+13055550199",
+        "called_number": called,
+        "agent_id": "agent_demo",
+        "call_sid": "CA123",
+        "conversation_id": "conv_demo-1",
+    }
+    with caplog.at_level(logging.INFO):
+        response = client.post("/elevenlabs/init", json=payload, headers=headers)
+    entry = request_record(caplog, response, "POST", "/elevenlabs/init")
+    assert entry.get("shop_id") == shop
+    assert entry.get("conversation_id") == ("conv_demo-1" if headers_ok else None)
+    assert_private(caplog)
+    line = next(r.getMessage() for r in caplog.records if r.name == "bear.request")
+    assert "5550110" not in line and "5550999" not in line

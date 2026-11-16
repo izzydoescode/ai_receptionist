@@ -215,3 +215,7 @@ def test_config_is_immutable():
     shop = ShopConfig.model_validate(VALID)
     with pytest.raises(ValidationError):
         shop.name = "Other"
+
+
+def test_unknown_is_reserved_for_unrecognized_numbers():
+    assert "reserved" in error_text(config(shop_id="unknown"))

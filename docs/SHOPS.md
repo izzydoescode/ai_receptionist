@@ -15,7 +15,7 @@ The errors show where the problem is and what's wrong, but never the value you e
 
 | Field | Required | Rules |
 |---|---|---|
-| `shop_id` | yes | `^[a-z0-9][a-z0-9-]{0,63}$`, and it must match the file name |
+| `shop_id` | yes | `^[a-z0-9][a-z0-9-]{0,63}$`, and it must match the file name. `unknown` is reserved for calls to numbers no shop owns |
 | `name`, `city` | yes | 1-80 characters |
 | `address` | yes | 1-200 characters |
 | `timezone` | yes | IANA name, e.g. `America/New_York` |
@@ -37,7 +37,7 @@ Unknown keys are rejected at every level, so a typo fails at startup instead of 
 
 ## How the app uses it
 - `SHOP_ID` is the default shop, and it needs a file in `SHOPS_DIR`. `/health` uses its time zone.
-- Every tool body accepts an optional `shop_id`. If it's left out, the tool uses `SHOP_ID`. Task 8 will have ElevenLabs fill it in from a dynamic variable, so the LLM never chooses it. If the id is malformed, the tool returns `invalid_input` on `shop_id`. If it's well-formed but has no file, the tool returns `200 {"ok": false, "error": "unknown_shop", ...}` and writes nothing.
-- Booking follows that shop's hours, holidays, `slot_minutes` and `bays_per_slot`, in the shop's time zone. A requested time is rounded down to the start of its slot. The tow destination defaults to the shop's `name`.
+- Every tool body accepts an optional `shop_id`. ElevenLabs fills it in from the `shop_id` dynamic variable that the call-start webhook returns, so the LLM never chooses it (see `docs/ELEVENLABS_INIT.md`). It may be omitted only in single-shop dev, where the tool uses `SHOP_ID`. If more than one shop is loaded, or the app is not in dev, a missing `shop_id` is `invalid_input` so a second shop's calls cannot silently write to the default shop. `shop_id: "unknown"` can only use `take_message`. If the id is malformed, the tool returns `invalid_input` on `shop_id`. If it's well-formed but has no file, the tool returns `200 {"ok": false, "error": "unknown_shop", ...}` and writes nothing.
+- Booking follows that shop's hours, holidays, `slot_minutes` and `bays_per_slot`, in the shop's time zone. A requested time must start a slot (off-grid times are `invalid_input`). The tow destination defaults to the shop's `name`.
 - `/admin?shop=<id>` shows that shop's name and timestamps in that shop's time zone. A shop with no file returns 404.
 - Tool log lines include `shop_id`.

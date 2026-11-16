@@ -44,6 +44,10 @@
         "language": {
           "type": "string",
           "description": "Language of the call: en, es, fr or ht"
+        },
+        "shop_id": {
+          "type": "string",
+          "dynamic_variable": "shop_id"
         }
       },
       "required": [
@@ -52,7 +56,8 @@
         "vehicle",
         "pickup_location",
         "issue",
-        "is_safe"
+        "is_safe",
+        "shop_id"
       ]
     }
   }

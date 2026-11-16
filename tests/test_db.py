@@ -169,6 +169,7 @@ def test_any_missing_table_requires_migration(tmp_path, monkeypatch, table):
     url = f"sqlite:///{tmp_path}/partial.db"
     monkeypatch.setenv("DATABASE_URL", url)
     monkeypatch.setenv("TOOL_SECRET", "x" * 40)
+    monkeypatch.setenv("INIT_WEBHOOK_SECRET", "y" * 40)
     monkeypatch.setenv("SHOP_ID", "vice-city-auto")
     engine = make_engine(url)
     try:
