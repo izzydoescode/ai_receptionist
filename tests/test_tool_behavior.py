@@ -165,9 +165,10 @@ def test_message_never_promises_an_unstaffed_language(make_client, payloads, too
     assert "The shop will call you back as soon as possible." in message
 
 
-def test_demo_shop_promises_spanish_but_not_creole(client, payloads, tool_headers):
+def test_demo_shop_promises_spanish_and_creole_but_not_french(client, payloads, tool_headers):
     assert STAFFED_SENTENCES["es"] in leave_message(client, tool_headers, payloads, "es")
-    assert STAFFED_SENTENCES["ht"] not in leave_message(client, tool_headers, payloads, "ht")
+    assert STAFFED_SENTENCES["ht"] in leave_message(client, tool_headers, payloads, "ht")
+    assert STAFFED_SENTENCES["fr"] not in leave_message(client, tool_headers, payloads, "fr")
 
 
 @pytest.mark.parametrize("language", sorted(STAFFED_SENTENCES))

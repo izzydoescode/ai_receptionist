@@ -69,7 +69,10 @@ def test_known_number_returns_that_shops_variables_and_overrides(init_client):
         "call_start_local": data["dynamic_variables"]["call_start_local"],
         "callback_text": shop.callback_text(),
     }
-    assert data["dynamic_variables"]["callback_text"].startswith("Staff can call back in English and Spanish.")
+    assert data["dynamic_variables"]["callback_text"].startswith(
+        "Staff can call back in English, Spanish and Haitian Creole."
+    )
+    assert "yon moun ki pale Kreyòl ap rele w tounen" in data["dynamic_variables"]["callback_text"]
     assert_recent_local(data["dynamic_variables"]["call_start_local"], "America/New_York")
     assert data["conversation_config_override"] == {
         "agent": {"first_message": shop.first_messages["en"], "language": "en"},
@@ -110,8 +113,8 @@ def test_unknown_number_gets_a_safe_message_only_greeting(init_client, number):
     agent = data["conversation_config_override"]["agent"]
     assert agent["language"] == "en"
     assert "may be recorded" in agent["first_message"]
-    assert "ai assistant" in agent["first_message"].lower()
-    assert variables["persona_name"] == "the shop's AI assistant"
+    assert "ai assistant" not in agent["first_message"].lower()
+    assert variables["persona_name"] == "the receptionist"
     assert "tts" not in data["conversation_config_override"]
 
 

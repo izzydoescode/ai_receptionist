@@ -1,6 +1,7 @@
 name: ht_message
 language: ht
-description: A Kreyòl caller wants a Kreyòl callback. The demo shop lists only English and Spanish staff, so the agent must not promise one.
+description: A Kreyòl caller wants a Kreyòl callback at a shop whose staff only call back in English and Spanish, so the agent must not promise one.
+shop: {callback_languages: [en, es]}
 calls:
   - tool: take_message
     args:
