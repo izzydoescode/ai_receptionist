@@ -1,0 +1,17 @@
+name: ht_message
+language: ht
+description: A Kreyòl caller wants a Kreyòl callback. The demo shop lists only English and Spanish staff, so the agent must not promise one.
+calls:
+  - tool: take_message
+    args:
+      caller_name: Wilner Joseph
+      phone: "+509 3412 3456"
+      reason: Wants a quote for rear brakes on a 2013 Honda Accord, prefers Creole
+      callback_language: ht
+    expect: {ok: true, saved: true}
+    expect_contains: {message: Don't promise a Haitian Creole-speaking callback}
+    expect_not_in_response: [Yon moun ki pale Kreyòl]
+db:
+  messages:
+    - {caller_name: Wilner Joseph, callback_language: ht, phone: "+50934123456"}
+admin_contains: [Wilner Joseph]

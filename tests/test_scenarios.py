@@ -122,16 +122,21 @@ def test_scenario(make_client, path):
 WRITE_TOOLS = {"book_appointment", "request_tow", "take_message"}
 
 
-@pytest.mark.parametrize("path", sorted(SCENARIOS.glob("es_*.yaml")), ids=lambda path: path.stem)
-def test_spanish_scenarios_persist_language_es(path):
+NON_ENGLISH_SCENARIOS = sorted(path for prefix in ("es", "fr", "ht") for path in SCENARIOS.glob(f"{prefix}_*.yaml"))
+
+
+@pytest.mark.parametrize("path", NON_ENGLISH_SCENARIOS, ids=lambda path: path.stem)
+def test_non_english_scenarios_send_and_save_their_language(path):
+    # es_* / fr_* / ht_* files must send and save that language on every write.
+    language = path.stem.split("_", 1)[0]
     scenario = load(path)
-    assert scenario["language"] == "es"
+    assert scenario["language"] == language
     writes = [step for step in scenario["calls"] if step["tool"] in WRITE_TOOLS]
     for step in writes:
-        assert "es" in (step["args"].get("language"), step["args"].get("callback_language")), step["tool"]
+        assert language in (step["args"].get("language"), step["args"].get("callback_language")), step["tool"]
     if writes:
         saved = [row for rows in scenario.get("db", {}).values() for row in rows]
-        assert saved and all("es" in (row.get("language"), row.get("callback_language")) for row in saved)
+        assert saved and all(language in (row.get("language"), row.get("callback_language")) for row in saved)
 
 
 PLAN_SCENARIOS = {
@@ -147,6 +152,10 @@ PLAN_SCENARIOS = {
     "es_message",
     "en_transfer_request",
     "en_unverified_status",
+    "fr_book",
+    "fr_status",
+    "ht_message",
+    "ht_message_staffed",
 }
 
 

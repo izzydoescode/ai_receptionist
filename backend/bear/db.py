@@ -70,6 +70,8 @@ repair_orders = Table(
     Column("ro_number", String(20), nullable=False),
     *text_columns("customer_name", "phone", "plate", "vehicle", "status", "note", "eta", "balance_estimate"),
     Column("updated_at", UTCDateTime(), nullable=False),
+    # When staff expect the car to be done. `eta` stays as a free-text note ("waiting on the bearing").
+    Column("eta_at", UTCDateTime()),
     UniqueConstraint("shop_id", "ro_number"),
 )
 appointments = Table(

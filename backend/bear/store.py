@@ -132,7 +132,16 @@ class Store:
     def list_repair_orders(self, shop_id):
         return self._list(repair_orders, shop_id)
 
-    def upsert_repair_order(self, shop_id, *, created_at=None, **fields):
+    def get_repair_order(self, shop_id, ro_number):
+        statement = select(repair_orders).where(
+            repair_orders.c.shop_id == shop_id, repair_orders.c.ro_number == ro_number
+        )
+        with self.engine.connect() as conn:
+            row = conn.execute(statement).mappings().one_or_none()
+            return None if row is None else dict(row)
+
+    def upsert_repair_order(self, shop_id, *, created_at=None, audit_event=None, **fields):
+        """Create or update by (shop_id, ro_number). audit_event, if given, is written in the same transaction."""
         now = (created_at or datetime.now(UTC)).astimezone(UTC)
         # Native upsert preserves identity and is atomic under concurrent writers.
         if self.engine.dialect.name == "sqlite":
@@ -159,10 +168,14 @@ class Store:
                 )
                 try:
                     with conn.begin_nested():
-                        return dict(conn.execute(statement).mappings().one())
+                        row = dict(conn.execute(statement).mappings().one())
                 except IntegrityError:
                     if conn.scalar(select(repair_orders.c.id).where(repair_orders.c.public_id == public_id)) is None:
                         raise
+                    continue
+                if audit_event is not None:
+                    self._audit(conn, shop_id, audit_event, row["public_id"], created_at=created_at)
+                return row
             raise RuntimeError("could not allocate public id")
 
     def save_call_summary(self, shop_id, *, created_at=None, **fields):

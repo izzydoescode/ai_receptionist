@@ -77,7 +77,9 @@ def test_health_and_admin_have_no_tool_deadline(make_client, monkeypatch):
 
 
 def test_fast_tool_under_deadline(make_client, payloads, tool_headers):
-    client = make_client(TOOL_DEADLINE_MS="100")
+    # A normal call must save. 100 ms was too tight for a first SQLite write on a busy CI runner
+    # (it flaked on Dependabot #20); 2 s still sits well under the 4 s production default.
+    client = make_client(TOOL_DEADLINE_MS="2000")
     response = client.post("/tools/take_message", json=payloads["take_message"], headers=tool_headers)
     assert response.status_code == 200 and response.json()["saved"] is True
     assert len(rows(client, "messages")) == 1

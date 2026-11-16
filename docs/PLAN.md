@@ -252,11 +252,21 @@ Acceptance: 12 or more scenarios pass. Each runs in under 1 s. Spanish scenarios
 - *`es_after_hours` tries Sunday, gets three alternatives, then leaves a Spanish message. `es_status` checks an accent-insensitive last-name match.*
 - *Not covered here (needs a key): whether the live agent produces these calls from speech. See Task 13.*
 
-### Task 13: Live agent rehearsal script (manual, needs a key)
+### Task 13: Live agent rehearsal script (manual, needs a key) (script and checklist done on `feat/live-rehearsal`; running it needs a key)
 - `scripts/rehearse.py` uses the ElevenLabs agent testing or simulated-conversation API (*endpoint names to be confirmed against current docs at implementation time*). It plays each scenario's caller lines in text mode against the real agent and asserts which tools were called. Run each scenario 3 times, because routing is probabilistic.
 - Add `docs/PHONE_TEST_CHECKLIST.md` for real calls: EN and ES on a cell phone, transfer rings the test cell, recording notice heard, the Kreyòl line goes to a callback message, background noise, barge-in, and silence for over 10 s.
 
 Acceptance: the script runs with `--dry-run` and no key, the checklist exists, and a results table template is in the doc.
+
+*Decisions at implementation: the script is `tools/rehearse.py` with cases in `tools/rehearsal_cases.yaml` (EN/ES/FR booking and status, EN and Kreyòl messages). The old simulate-conversation endpoint was removed on Oct 31, 2026, so it uses the agent-testing API: one `tool` test per case (tool name plus argument checks), `run-tests` with `repeat_count` 3, polling `test-invocations`, then deleting the tests it created. Dynamic variables come from the demo shop's init response. The `path` syntax for argument checks isn't documented; top-level argument names are assumed, so confirm on the first live run.*
+
+## Phase F2: Go-live features (Nov 15 plan)
+
+### Task 16: Repair-order admin and spoken ETAs (done on `feat/repair-order-admin`)
+- Staff create, edit and close repair orders at `/admin/ros` (behind the admin login, with a CSRF token tied to the shop, signed with a random per-start key, and an Origin check). Every change writes `repair_order.created` / `repair_order.updated` to `audit_events`. Marking an order `picked_up` closes it, and closed orders stop answering status lookups.
+- `repair_orders.eta_at` (migration 0005) holds the done-by time; the old `eta` text is kept as a note. `check_repair_status` says the time relative to the shop's day ("tomorrow by 3 PM") and adds `eta_past_due` and `estimate_updated`. A past-due or missing estimate tells the agent not to guess and to offer a message.
+- `check_repair_status` takes `caller_phone` from `system__caller_id` as the phone factor when the caller didn't give one.
+- *Later, not MVP:* this router (`bear/admin.py`) is where a dashboard (metrics from `call_summaries` and `audit_events`), customer and CRM views, and a paid estimator add-on would grow.
 
 ## Phase G: SMS confirmations (later, behind A2P 10DLC approval)
 
