@@ -87,3 +87,24 @@ def test_languages_text(languages, expected):
         },
     )
     assert ShopConfig.model_validate(data).languages_text() == expected
+
+
+@pytest.mark.parametrize(
+    "languages,expected",
+    [
+        (["en"], "Staff can call back in English."),
+        (["en", "es"], "Staff can call back in English and Spanish."),
+        (["es", "en", "ht"], "Staff can call back in Spanish, English and Haitian Creole."),
+    ],
+)
+def test_callback_text_names_the_staffed_languages(languages, expected):
+    text = shop(callback_languages=languages).callback_text()
+    assert text.startswith(expected + " Only promise a callback in one of those languages")
+
+
+def test_creole_bridge_line_promises_a_creole_callback_only_when_staffed():
+    staffed = shop(callback_languages=["en", "ht"]).callback_text()
+    unstaffed = shop(callback_languages=["en", "es"]).callback_text()
+    assert "yon moun ki pale Kreyòl ap rele w tounen" in staffed
+    assert "Kreyòl ap rele" not in unstaffed
+    assert "garaj la ap rele w tounen" in unstaffed

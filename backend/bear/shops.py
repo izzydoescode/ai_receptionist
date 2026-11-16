@@ -18,7 +18,7 @@ SHOP_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
 UNKNOWN_SHOP_ID = "unknown"
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 # Fla. Stat. 934.03 needs every party's consent, so each greeting must say the call may be recorded.
-LANGUAGE_NAMES = {"en": "English", "es": "Spanish", "fr": "French"}
+LANGUAGE_NAMES = {"en": "English", "es": "Spanish", "fr": "French", "ht": "Haitian Creole"}
 RECORDING_NOTICES = {
     "en": ("may be recorded",),
     "es": ("puede ser grabada", "pueden ser grabadas", "se puede grabar"),
@@ -29,6 +29,32 @@ TOW_FALLBACK_REPLY = "I've logged it and the shop will call you back as soon as 
 PHOTO_FALLBACK_ADVICE = (
     "Tell callers to bring photos to the estimate, or the service writer will tell them where to send them."
 )
+
+
+# What the agent says, slowly, to a caller who speaks Kreyòl (see docs/TRANSLATION_REVIEW.md).
+# It promises a Kreyòl-speaking callback only when the shop lists ht in callback_languages.
+KREYOL_BRIDGE_STAFFED = (
+    "Bonjou! Mwen pa pale Kreyòl byen. Nou ka pale franse, anglè oswa panyòl, "
+    "oswa mwen pran mesaj ou epi yon moun ki pale Kreyòl ap rele w tounen."
+)
+KREYOL_BRIDGE_UNSTAFFED = (
+    "Bonjou! Mwen pa pale Kreyòl byen. Nou ka pale franse, anglè oswa panyòl, "
+    "oswa mwen pran mesaj ou epi garaj la ap rele w tounen."
+)
+
+
+def join_names(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def callback_text(languages) -> str:
+    """Tell the agent which callback languages it may promise, plus the matching Kreyòl bridge line."""
+    bridge = KREYOL_BRIDGE_STAFFED if "ht" in languages else KREYOL_BRIDGE_UNSTAFFED
+    return (
+        f"Staff can call back in {join_names([LANGUAGE_NAMES[lang] for lang in languages])}. "
+        "Only promise a callback in one of those languages; otherwise say the shop will call back "
+        f'as soon as possible, without promising a language. Kreyòl bridge line: "{bridge}"'
+    )
 
 
 def fold(value: str) -> str:
@@ -54,6 +80,8 @@ E164 = Annotated[str, BeforeValidator(parse_e164)]
 Clock = Annotated[time, BeforeValidator(parse_clock)]
 Label = Annotated[str, Field(min_length=1, max_length=80)]
 Language = Literal["en", "es", "fr"]
+# Languages staff can return calls in; Kreyòl is possible here even though the voice agent can't speak it.
+CallbackLanguage = Literal["en", "es", "fr", "ht"]
 VoiceId = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
 
 
@@ -122,6 +150,7 @@ class ShopConfig(_Frozen):
     services: list[Label] = Field(min_length=1)
     languages: list[Language] = Field(min_length=1)
     ht_fallback: Literal["message", "french"] = "message"
+    callback_languages: list[CallbackLanguage] = Field(default=["en"], min_length=1)
     voices: dict[Language, VoiceId]
     first_messages: dict[Language, Annotated[str, Field(min_length=1, max_length=500)]]
     features: Features = Features()
@@ -143,11 +172,11 @@ class ShopConfig(_Frozen):
             raise ValueError("must be an IANA time zone like America/New_York") from None
         return value
 
-    @field_validator("languages")
+    @field_validator("languages", "callback_languages")
     @classmethod
-    def _unique_languages(cls, value):
+    def _unique_languages(cls, value, info):
         if len(set(value)) != len(value):
-            raise ValueError("languages must not repeat")
+            raise ValueError(f"{info.field_name} must not repeat")
         return value
 
     @model_validator(mode="after")
@@ -245,8 +274,10 @@ class ShopConfig(_Frozen):
         return text
 
     def languages_text(self) -> str:
-        names = [LANGUAGE_NAMES[lang] for lang in self.languages]
-        return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+        return join_names([LANGUAGE_NAMES[lang] for lang in self.languages])
+
+    def callback_text(self) -> str:
+        return callback_text(self.callback_languages)
 
     def services_text(self) -> str:
         return ", ".join(self.services)

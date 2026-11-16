@@ -144,3 +144,19 @@ def test_unknown_number_messages_have_their_own_board(make_client):
     assert "Unmatched Caller" in body
     assert "<td>2026-11-16 10:00 EST</td>" in body
     assert "Unmatched Caller" not in client.get("/admin", auth=ADMIN_AUTH).text
+
+
+def test_board_makes_non_english_callback_language_and_high_urgency_stand_out(make_client):
+    client = make_client(_seed=False)
+    store = client.app.state.store
+    shop = client.app.state.settings.shop_id
+    store.create_message(shop, **{**MESSAGE, "callback_language": "es", "urgency": "high"}, created_at=FIXED)
+    store.create_message(shop, **MESSAGE, created_at=FIXED)
+    body = client.get("/admin", auth=ADMIN_AUTH).text
+    assert re.search(r'<td\b[^>]*class="[^"]*callback-other[^"]*"[^>]*>es</td>', body)
+    assert re.search(r'<td\b[^>]*class="[^"]*urgency-high[^"]*"[^>]*>high</td>', body)
+    # English / normal stay plain so they don't compete with the flags.
+    assert re.search(r"<td>en</td>", body)
+    assert re.search(r"<td>normal</td>", body)
+    assert re.search(r'<th\b[^>]*class="[^"]*standout[^"]*"[^>]*>callback_language</th>', body)
+    assert re.search(r'<th\b[^>]*class="[^"]*standout[^"]*"[^>]*>urgency</th>', body)

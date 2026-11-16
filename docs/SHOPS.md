@@ -28,6 +28,7 @@ The errors show where the problem is and what's wrong, but never the value you e
 | `services` | yes | At least one, 1-80 characters each |
 | `languages` | yes | Unique subset of `en`, `es`, `fr` |
 | `ht_fallback` | no | What happens when a caller speaks Haitian Creole: `message` (default) takes a message, `french` switches to French and needs `fr` in `languages` |
+| `callback_languages` | no | Languages staff can return calls in, from `en`, `es`, `fr`, `ht`, with no repeats. Default `[en]`. Bear only promises a callback in a listed language (for example "someone who speaks Kreyòl will call you back"). |
 | `voices` | yes | One ElevenLabs voice id for each language in `languages`, and no others |
 | `first_messages` | yes | One greeting for each language in `languages`, and no others. Each greeting has to include that language's recording notice (case and accents are ignored): English `may be recorded`; Spanish `puede ser grabada`, `pueden ser grabadas`, or `se puede grabar`; French `peut être enregistré`. Florida law requires every party's consent to record a call (Fla. Stat. 934.03) |
 | `features` | no | `sms_confirmations`, `tow_dispatch`, `photo_texting`. All default to `false`. Turn a flag on only when the shop really does that: the flags only change what the agent promises, they do not send texts, dispatch a tow, or accept photo texts |

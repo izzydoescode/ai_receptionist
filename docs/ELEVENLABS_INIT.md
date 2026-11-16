@@ -22,7 +22,8 @@ ElevenLabs calls `POST /elevenlabs/init` while an inbound Twilio call is still r
     "features_text": "We do not send text confirmations. Tow requests go to staff; there is no automatic dispatch. After logging a tow, say: \"I've logged it and the shop will call you back as soon as possible. If you're unsafe, call 911.\" We cannot receive photos by text. Tell callers to bring photos to the estimate, ...",
     "shop_timezone": "America/New_York",
     "languages_text": "English, Spanish and French",
-    "call_start_local": "Sunday, November 15, 2026, 09:30 AM"
+    "call_start_local": "Sunday, November 15, 2026, 09:30 AM",
+    "callback_text": "Staff can call back in English and Spanish. Only promise a callback in one of those languages; ... Kreyòl bridge line: \"Bonjou! ...\""
   },
   "conversation_config_override": {
     "agent": {"first_message": "<the shop's first_messages for its first language>", "language": "en"},
@@ -34,6 +35,8 @@ The language used is the first one in the shop's `languages` list. `bear.initiat
 
 `call_start_local` is the shop's local time when the call started. The prompt uses it instead of `{{system__time}}`, which follows the agent's single configured time zone (not each shop's) and changes every turn, which defeats prompt caching. Unknown numbers get the default shop's time zone.
 
+`callback_text` comes from the shop's `callback_languages` (`docs/SHOPS.md`). It names the languages staff can call back in, and it carries the Kreyòl bridge line: the version that promises a Kreyòl-speaking callback only if `ht` is listed, and otherwise one that just says the shop will call back. Unknown numbers get English only.
+
 **Unknown number.** If no shop owns the dialed number, the response uses `shop_id: "unknown"` and neutral wording (no shop name). The English greeting includes the recording notice, there is no voice override, and `features_text` tells the agent it can only take a message. On those calls:
 - `take_message` files messages under `unknown`, and they show up at `/admin?shop=unknown`. The tool also accepts a `conversation_id` dynamic variable (not filled by the LLM) so staff can find the call in the ElevenLabs dashboard without storing the dialed number.
 - Every other tool returns `unknown_shop` and writes nothing.
@@ -44,7 +47,7 @@ The language used is the first one in the shop's `languages` list. `bear.initiat
 Sources: [Twilio personalization](https://elevenlabs.io/docs/agents-platform/customization/personalization/twilio-personalization), [Personalization](https://elevenlabs.io/docs/agents-platform/customization/personalization) and [Dynamic variables](https://elevenlabs.io/docs/agents-platform/customization/personalization/dynamic-variables).
 - The request fields match the docs. The docs add that SIP calls may include `call_id` and `sip_headers`, and that `call_sid` is an empty string outside telephony. We ignore the first two and accept an empty `call_sid`.
 - The response uses only part of the documented shape. We don't send the optional `prompt`/`llm`, `conversation`, `user_id`, `branch_id` or `environment` overrides.
-- The docs say `dynamic_variables` must contain **every custom dynamic variable defined on the agent**. We always send these eleven. If you add another variable to the agent, add it to `DynamicVariables` as well. `system__*` variables can't be set this way, and we don't try.
+- The docs say `dynamic_variables` must contain **every custom dynamic variable defined on the agent**. We always send these twelve. If you add another variable to the agent, add it to `DynamicVariables` as well. `system__*` variables can't be set this way, and we don't try.
 - The docs give no exact timeout. They only say to respond "within a reasonable timeout", and the response body must be 256 KB or smaller. The 300 ms target is our own.
 - The header name is our choice, since the docs leave header secrets up to you.
 
@@ -54,6 +57,6 @@ Sources: [Twilio personalization](https://elevenlabs.io/docs/agents-platform/cus
    - Enable **Fetch initiation client data from a webhook**.
    - Enable the **first message**, **language** and **voice** overrides.
    - Don't enable the system prompt override. We don't send it.
-3. **Agent → Dynamic variables:** add placeholders for `shop_id`, `shop_name`, `shop_city`, `shop_address`, `hours_text`, `services_text`, `persona_name`, `features_text`, `shop_timezone`, `languages_text` and `call_start_local`. Use `vice-city-auto` and the demo values. Preview and simulation tests don't call the webhook, so without placeholders those variables stay as literal `{{...}}` text.
+3. **Agent → Dynamic variables:** add placeholders for `shop_id`, `shop_name`, `shop_city`, `shop_address`, `hours_text`, `services_text`, `persona_name`, `features_text`, `shop_timezone`, `languages_text`, `call_start_local` and `callback_text`. Use `vice-city-auto` and the demo values. Preview and simulation tests don't call the webhook, so without placeholders those variables stay as literal `{{...}}` text.
 4. **Tools:** re-create the four webhook tools from the regenerated `tools/*.json`. Each now has a required `shop_id` body parameter whose value type is **Dynamic variable** `shop_id`, so the LLM never fills it in.
 5. **Confirm on the live agent:** after re-creating the tools, open each tool's parameter list in the ElevenLabs UI and check that `shop_id` is a dynamic variable, not an LLM-filled field.

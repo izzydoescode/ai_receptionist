@@ -128,18 +128,51 @@ def test_message_reply_promises_only_a_callback(client, payloads, tool_headers, 
         assert phrase not in message
 
 
-@pytest.mark.parametrize(
-    "language,sentence",
-    [
-        ("es", "Alguien que habla español le llamará."),
-        ("ht", "A Creole-speaking team member will call back."),
-    ],
-)
-def test_message_ticket_and_requested_callback_language(client, payloads, tool_headers, language, sentence):
-    result = post(client, tool_headers, "take_message", {**payloads["take_message"], "callback_language": language})
+STAFFED_SENTENCES = {
+    "es": "Alguien que habla español le llamará.",
+    "fr": "A French-speaking team member will call back.",
+    "ht": "A Creole-speaking team member will call back.",
+}
+LANGUAGE_NAMES = {"es": "Spanish", "fr": "French", "ht": "Haitian Creole"}
+
+
+def leave_message(client, tool_headers, payloads, language, shop_id="vice-city-auto"):
+    payload = {**payloads["take_message"], "callback_language": language, "shop_id": shop_id}
+    result = post(client, tool_headers, "take_message", payload)
     assert result["saved"] is True
     assert result["ticket"].startswith("M")
-    assert sentence in result["message"]
+    return result["message"]
+
+
+@pytest.mark.parametrize("language", sorted(STAFFED_SENTENCES))
+def test_message_promises_a_callback_in_a_staffed_language(make_client, payloads, tool_headers, language):
+    client = make_client(_shops=[{"callback_languages": ["en", "es", "fr", "ht"]}])
+    assert STAFFED_SENTENCES[language] in leave_message(client, tool_headers, payloads, language)
+
+
+@pytest.mark.parametrize("language", sorted(STAFFED_SENTENCES))
+def test_message_never_promises_an_unstaffed_language(make_client, payloads, tool_headers, language):
+    client = make_client(_shops=[{"callback_languages": ["en"]}])
+    message = leave_message(client, tool_headers, payloads, language)
+    assert STAFFED_SENTENCES[language] not in message
+    assert f"Don't promise a {LANGUAGE_NAMES[language]}-speaking callback" in message
+    assert "The shop will call back as soon as possible." in message
+
+
+def test_demo_shop_promises_spanish_but_not_creole(client, payloads, tool_headers):
+    assert STAFFED_SENTENCES["es"] in leave_message(client, tool_headers, payloads, "es")
+    assert STAFFED_SENTENCES["ht"] not in leave_message(client, tool_headers, payloads, "ht")
+
+
+@pytest.mark.parametrize("language", sorted(STAFFED_SENTENCES))
+def test_unknown_line_promises_no_language_callback(client, payloads, tool_headers, language):
+    message = leave_message(client, tool_headers, payloads, language, shop_id="unknown")
+    assert STAFFED_SENTENCES[language] not in message
+
+
+def test_english_callback_adds_nothing(client, payloads, tool_headers):
+    message = leave_message(client, tool_headers, payloads, "en")
+    assert message == "Message saved for the service writer. The shop will call back as soon as possible."
 
 
 def test_take_message_persists_vehicle_and_shows_it_on_the_board(client, payloads, tool_headers):
