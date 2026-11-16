@@ -1,0 +1,16 @@
+name: ht_message_staffed
+language: ht
+description: Same Kreyòl caller, but this shop lists Haitian Creole in callback_languages, so the Kreyòl callback line is promised.
+shop: {callback_languages: [en, es, ht]}
+calls:
+  - tool: take_message
+    args:
+      caller_name: Wilner Joseph
+      phone: "+509 3412 3456"
+      reason: Wants a quote for rear brakes on a 2013 Honda Accord, prefers Creole
+      callback_language: ht
+    expect: {ok: true, saved: true}
+    expect_contains: {message: Yon moun ki pale Kreyòl ap rele w tounen.}
+db:
+  messages:
+    - {caller_name: Wilner Joseph, callback_language: ht}
