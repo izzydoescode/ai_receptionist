@@ -1,0 +1,94 @@
+# Live rehearsal cases for tools/rehearse.py (PLAN Task 13).
+# Each case is a text conversation that should end with the agent calling one tool.
+# chat_history ends on the caller's turn that should trigger the tool.
+# params: {name: {exact: value} | {regex: pattern} | {llm: description} | {anything: true}}
+# All callers and numbers are made up (555-01XX).
+
+- name: en_book
+  language: en
+  tool: book_appointment
+  chat_history:
+    - {role: user, message: "Hi, I need an oil change for my 2018 Honda Accord next Monday at ten in the morning."}
+    - {role: agent, message: "Sure thing. Can I get your name and a good callback number?"}
+    - {role: user, message: "Dana Smith, three oh five, five five five, oh one two three."}
+    - {role: agent, message: "Got it: Dana Smith, 305-555-0123, a 2018 Honda Accord for an oil change, Monday at ten A M. Want me to book it?"}
+    - {role: user, message: "Yes, book it please."}
+  params:
+    preferred_time: {exact: "10:00"}
+    language: {exact: en}
+    service: {llm: "an oil change"}
+    customer_name: {regex: "(?i)dana smith"}
+
+- name: es_book
+  language: es
+  tool: book_appointment
+  chat_history:
+    - {role: user, message: "Hola, necesito cambiar los frenos de mi Nissan Altima 2014 el lunes a las nueve de la mañana."}
+    - {role: agent, message: "Claro. ¿Me da su nombre y un número para llamarle?"}
+    - {role: user, message: "José Martínez, siete ocho seis, cinco cinco cinco, cero uno cuatro ocho."}
+    - {role: agent, message: "Perfecto: José Martínez, 786-555-0148, Nissan Altima 2014, cambio de frenos, el lunes a las nueve de la mañana. ¿Se lo reservo?"}
+    - {role: user, message: "Sí, por favor."}
+  params:
+    preferred_time: {exact: "09:00"}
+    language: {exact: es}
+    service: {llm: "a brake job or brake replacement"}
+
+- name: fr_book
+  language: fr
+  tool: book_appointment
+  chat_history:
+    - {role: user, message: "Bonjour, je voudrais faire vérifier les freins de ma Toyota Corolla 2016 mardi à dix heures."}
+    - {role: agent, message: "Bien sûr. Votre nom et un numéro où vous rappeler ?"}
+    - {role: user, message: "Jacques Pierre-Louis, neuf cinq quatre, cinq cinq cinq, zéro un six trois."}
+    - {role: agent, message: "Parfait : Jacques Pierre-Louis, 954-555-0163, Toyota Corolla 2016, vérification des freins, mardi à dix heures. Je réserve ?"}
+    - {role: user, message: "Oui, merci."}
+  params:
+    preferred_time: {exact: "10:00"}
+    language: {exact: fr}
+
+- name: en_status
+  language: en
+  tool: check_repair_status
+  chat_history:
+    - {role: user, message: "Hey, is my car ready yet? Last name is Rivera, the repair order number is one zero zero one."}
+  params:
+    last_name: {regex: "(?i)rivera"}
+    ro_number: {exact: "1001"}
+
+- name: es_status
+  language: es
+  tool: check_repair_status
+  chat_history:
+    - {role: user, message: "Buenas, ¿ya está listo mi carro? Mi apellido es Gómez y el número de orden es uno cero cero cuatro."}
+  params:
+    last_name: {regex: "(?i)g[oó]mez"}
+    ro_number: {exact: "1004"}
+
+- name: fr_status
+  language: fr
+  tool: check_repair_status
+  chat_history:
+    - {role: user, message: "Bonjour, est-ce que ma voiture est prête ? Mon nom est Jean-Baptiste, numéro de réparation un zéro zéro deux."}
+  params:
+    last_name: {regex: "(?i)jean-?baptiste"}
+    ro_number: {exact: "1002"}
+
+- name: en_message
+  language: en
+  tool: take_message
+  chat_history:
+    - {role: user, message: "I just want the owner to call me back about a body work estimate for my F-150."}
+    - {role: agent, message: "No problem, I'll take a message. What's your name and the best number to reach you?"}
+    - {role: user, message: "Pat Lee, nine five four, five five five, oh one eight eight."}
+  params:
+    callback_language: {exact: en}
+    reason: {llm: "wants a call back about a body work estimate"}
+
+- name: ht_message
+  language: ht
+  tool: take_message
+  chat_history:
+    - {role: user, message: "Bonjou, mwen bezwen yon moun ki pale Kreyòl rele m pou yon estimasyon pou frenn machin mwen. Non mwen se Wilner Joseph, nimewo m se sèt uit sis, senk senk senk, zewo en sèt sèt."}
+  params:
+    callback_language: {exact: ht}
+    reason: {llm: "wants a brake estimate and a callback in Haitian Creole"}
