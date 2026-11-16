@@ -24,6 +24,11 @@ RECORDING_NOTICES = {
     "es": ("puede ser grabada", "pueden ser grabadas", "se puede grabar"),
     "fr": ("peut être enregistré",),
 }
+# What the agent says instead of promising a feature the shop has turned off (PLAN Task 10).
+TOW_FALLBACK_REPLY = "I've logged it and the shop will call you back as soon as possible. If you're unsafe, call 911."
+PHOTO_FALLBACK_ADVICE = (
+    "Tell callers to bring photos to the estimate, or the service writer will tell them where to send them."
+)
 
 
 def fold(value: str) -> str:
@@ -254,10 +259,13 @@ class ShopConfig(_Frozen):
                 "We send a text confirmation after booking."
                 if f.sms_confirmations
                 else "We do not send text confirmations.",
-                "Tow requests are dispatched automatically."
+                "Tow requests are dispatched automatically; a dispatcher calls back within 15 minutes with an ETA."
                 if f.tow_dispatch
-                else "Tow requests go to staff, who call back; there is no automatic dispatch.",
-                "Callers can text photos to this number." if f.photo_texting else "We cannot receive photos by text.",
+                else "Tow requests go to staff; there is no automatic dispatch. After logging a tow, say: "
+                f'"{TOW_FALLBACK_REPLY}"',
+                "Callers can text photos to this number for a faster estimate."
+                if f.photo_texting
+                else f"We cannot receive photos by text. {PHOTO_FALLBACK_ADVICE}",
             ]
         )
 

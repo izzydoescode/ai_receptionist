@@ -39,7 +39,7 @@ from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 from bear.db import check_schema, make_engine
 from bear.initiation import InitRequest, shop_initiation, unknown_initiation
 from bear.seed import DEMO_REPAIR_ORDERS
-from bear.shops import SHOP_ID_PATTERN, UNKNOWN_SHOP_ID, ShopConfig, load_shops
+from bear.shops import SHOP_ID_PATTERN, TOW_FALLBACK_REPLY, UNKNOWN_SHOP_ID, ShopConfig, load_shops
 from bear.store import SlotFull, Store
 
 DEFAULT_SHOPS_DIR = Path(__file__).resolve().parent.parent / "shops"
@@ -757,7 +757,10 @@ def create_app() -> FastAPI:
         fields = req.model_dump(exclude={"shop_id"})
         fields["destination"] = req.destination or shop.name
         tow = store.create_tow(shop.shop_id, **fields, status="dispatch_requested")
-        msg = "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
+        if shop.features.tow_dispatch:
+            msg = "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
+        else:
+            msg = f'Tow request logged. Tell the caller: "{TOW_FALLBACK_REPLY}"'
         if not req.is_safe:
             msg = "Caller may be unsafe: tell them to call 911 now if anyone is hurt or they're in traffic. " + msg
         return {"ok": True, "logged": True, "ticket": tow["public_id"], "message": msg}
@@ -783,7 +786,7 @@ def create_app() -> FastAPI:
             "ok": True,
             "saved": True,
             "ticket": m["public_id"],
-            "message": "Message saved for the service writer." + lang,
+            "message": "Message saved for the service writer. The shop will call back as soon as possible." + lang,
         }
 
     @app.get("/admin", response_class=HTMLResponse, dependencies=[Depends(check_admin)])

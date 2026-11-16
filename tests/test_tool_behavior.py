@@ -94,6 +94,40 @@ def test_unsafe_tow_starts_with_911_warning(client, payloads, tool_headers):
     assert result["message"].startswith("Caller may be unsafe: tell them to call 911 now")
 
 
+TOW_ON = {"sms_confirmations": False, "tow_dispatch": True, "photo_texting": False}
+BANNED_WHEN_OFF = ["15 minutes", "dispatcher", "text photos", "24/7"]
+
+
+def test_tow_without_dispatch_promises_only_a_callback(client, payloads, tool_headers):
+    message = post(client, tool_headers, "request_tow", payloads["request_tow"])["message"]
+    assert message == (
+        "Tow request logged. Tell the caller: \"I've logged it and the shop will call you back as soon as possible. "
+        "If you're unsafe, call 911.\""
+    )
+    for phrase in BANNED_WHEN_OFF:
+        assert phrase not in message
+
+
+def test_tow_with_dispatch_promises_the_dispatcher(make_client, payloads, tool_headers):
+    client = make_client(_shops=[{"features": TOW_ON}])
+    message = post(client, tool_headers, "request_tow", payloads["request_tow"])["message"]
+    assert message == "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
+
+
+def test_unsafe_tow_without_dispatch_keeps_the_911_warning_first(client, payloads, tool_headers):
+    message = post(client, tool_headers, "request_tow", {**payloads["request_tow"], "is_safe": False})["message"]
+    assert message.startswith("Caller may be unsafe: tell them to call 911 now")
+    assert "15 minutes" not in message
+
+
+@pytest.mark.parametrize("shop_id", ["vice-city-auto", "unknown"])
+def test_message_reply_promises_only_a_callback(client, payloads, tool_headers, shop_id):
+    message = post(client, tool_headers, "take_message", {**payloads["take_message"], "shop_id": shop_id})["message"]
+    assert message.startswith("Message saved for the service writer. The shop will call back as soon as possible.")
+    for phrase in BANNED_WHEN_OFF:
+        assert phrase not in message
+
+
 @pytest.mark.parametrize(
     "language,sentence",
     [

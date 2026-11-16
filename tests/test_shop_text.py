@@ -51,13 +51,17 @@ def test_services_text():
     [
         (
             {},
-            "We do not send text confirmations. Tow requests go to staff, who call back; "
-            "there is no automatic dispatch. We cannot receive photos by text.",
+            "We do not send text confirmations. "
+            "Tow requests go to staff; there is no automatic dispatch. After logging a tow, say: "
+            "\"I've logged it and the shop will call you back as soon as possible. If you're unsafe, call 911.\" "
+            "We cannot receive photos by text. Tell callers to bring photos to the estimate, "
+            "or the service writer will tell them where to send them.",
         ),
         (
             {"sms_confirmations": True, "tow_dispatch": True, "photo_texting": True},
-            "We send a text confirmation after booking. Tow requests are dispatched automatically. "
-            "Callers can text photos to this number.",
+            "We send a text confirmation after booking. "
+            "Tow requests are dispatched automatically; a dispatcher calls back within 15 minutes with an ETA. "
+            "Callers can text photos to this number for a faster estimate.",
         ),
     ],
 )
