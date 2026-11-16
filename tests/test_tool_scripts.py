@@ -73,7 +73,10 @@ def test_shop_id_is_bound_to_the_dynamic_variable_not_the_llm(generated_tools):
         # ElevenLabs fills a property with dynamic_variable from the conversation; it has no
         # description, so the LLM is never asked to supply it.
         assert properties["shop_id"] == {"type": "string", "dynamic_variable": "shop_id"}
-        dynamic = {"shop_id", "conversation_id"} if path.stem == "take_message" else {"shop_id"}
+        dynamic = {
+            "take_message": {"shop_id", "conversation_id"},
+            "check_repair_status": {"shop_id", "caller_phone"},
+        }.get(path.stem, {"shop_id"})
         assert all("dynamic_variable" not in spec for name, spec in properties.items() if name not in dynamic)
 
 

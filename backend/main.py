@@ -39,11 +39,19 @@ from starlette.concurrency import run_in_threadpool
 
 from bear.alerts import send_staff_alert, warn_if_prod_log_only
 from bear.db import check_schema, make_engine
+from bear.eta import describe_eta
 from bear.initiation import InitRequest, shop_initiation, unknown_initiation
 from bear.post_call import parse_transcription
-from bear.seed import DEMO_REPAIR_ORDERS
+from bear.seed import demo_repair_orders
 from bear.shops import LANGUAGE_NAMES, SHOP_ID_PATTERN, TOW_FALLBACK_REPLY, UNKNOWN_SHOP_ID, ShopConfig, load_shops
 from bear.store import SlotFull, Store
+from bear.validation import (
+    clean_text,
+    integer_to_string,
+    lowercase,
+    normalize_phone,
+    validate_date,
+)
 from bear.webhook_signature import SignatureError, verify_signature
 
 POST_CALL_MAX_BYTES = 2 * 1024 * 1024  # transcription events only; leave "Send audio data" off
@@ -99,6 +107,9 @@ STATUS_TEXT = {
     "awaiting_approval": "waiting for the customer's approval on the estimate",
     "diagnosing": "being diagnosed",
 }
+# Staff close a repair order by marking it picked up; closed orders no longer answer status lookups.
+CLOSED_STATUS = "picked_up"
+RO_STATUS_LABELS = {**STATUS_TEXT, CLOSED_STATUS: "picked up (closed)"}
 
 
 # Said only when the shop lists the language in callback_languages (docs/SHOPS.md).
@@ -140,69 +151,6 @@ def normalize_name(value: str) -> str:
 
 
 # ---------- validation and transport ----------
-# ZWNJ and ZWJ are format characters but must be kept for Persian (and
-# similar scripts) and for emoji sequences.
-KEEP_FORMAT = {"‌", "‍"}
-
-
-def clean_text(value):
-    if isinstance(value, str):
-        chars = []
-        for char in value:
-            category = unicodedata.category(char)
-            if category == "Cf" and char not in KEEP_FORMAT:
-                continue  # ZWSP, bidi controls, BOM
-            chars.append(" " if category == "Cc" else char)
-        return " ".join("".join(chars).split())
-    return value
-
-
-def integer_to_string(value):
-    return str(value) if isinstance(value, int) and not isinstance(value, bool) else value
-
-
-def is_nanp(digits):
-    # Area code and exchange must be [2-9]XX; this rejects 000-000-0000 and similar fakes.
-    return bool(re.fullmatch(r"[2-9]\d{2}[2-9]\d{6}", digits))
-
-
-# ext, ext., x, #, or "extension", so "…3456 ext 4" is not stored as …34564.
-PHONE_EXTENSION = re.compile(r"(?i)(?:\bextension\b|\bext\.|\bext\b|\bx\b|x\s*\d|#)")
-
-
-def normalize_phone(value):
-    value = integer_to_string(value)
-    if not isinstance(value, str):
-        raise ValueError("invalid phone")
-    if PHONE_EXTENSION.search(value):
-        raise ValueError("phone extension")
-    if len(value) > 32:
-        raise ValueError("invalid phone")
-    plus = value.strip().startswith("+")
-    digits = re.sub(r"\D", "", value)
-    # E.164 country codes are 1-9; a leading 0 is not a valid country code.
-    if plus and re.fullmatch(r"[1-9]\d{7,14}", digits):
-        if digits.startswith("1"):
-            # Country code 1 is NANP and must be +1 plus a 10-digit national number.
-            if len(digits) != 11 or not is_nanp(digits[1:]):
-                raise ValueError("invalid phone")
-        return "+" + digits
-    if len(digits) == 10 and is_nanp(digits):
-        return "+1" + digits
-    if len(digits) == 11 and digits.startswith("1") and is_nanp(digits[1:]):
-        return "+" + digits
-    raise ValueError("invalid phone")
-
-
-def validate_date(value):
-    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-        raise ValueError("invalid date")
-    date.fromisoformat(value)
-    return value
-
-
-def lowercase(value):
-    return value.lower() if isinstance(value, str) else value
 
 
 Name = Annotated[str, Field(min_length=1, max_length=80), BeforeValidator(clean_text)]
@@ -232,6 +180,9 @@ class BookAppointment(ToolRequest):
 
 class RepairStatus(ToolRequest):
     phone: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=32)
+    # Filled from the system__caller_id dynamic variable, never by the LLM. Used as the phone
+    # factor only when the caller didn't give one; blank or non-numeric values are ignored.
+    caller_phone: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=32)
     ro_number: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=20)
     last_name: Annotated[str | None, BeforeValidator(clean_text)] = Field(default=None, max_length=80)
 
@@ -790,6 +741,10 @@ def create_app() -> FastAPI:
             return UNKNOWN_SHOP
         last_name = (req.last_name or "").strip()
         phone = (req.phone or "").strip()
+        caller_phone = (req.caller_phone or "").strip()
+        phone_from_caller_id = not phone and len(re.sub(r"\D", "", caller_phone)) >= 10
+        if phone_from_caller_id:
+            phone = caller_phone
         ro = (req.ro_number or "").strip()
         if not last_name or not (phone or ro):
             store.record_audit(shop.shop_id, "repair_status.lookup", outcome="needs_info")
@@ -799,6 +754,8 @@ def create_app() -> FastAPI:
         phone_digits = re.sub(r"\D", "", phone)
         hits = []
         for record in store.list_repair_orders(shop.shop_id):
+            if record["status"] == CLOSED_STATUS:
+                continue
             customer_tokens = record["customer_name"].split()
             if not customer_tokens or normalize_name(customer_tokens[-1]) not in names:
                 continue
@@ -808,6 +765,10 @@ def create_app() -> FastAPI:
                 continue
             hits.append(record)
         if len(hits) != 1:
+            if phone_from_caller_id and not ro:
+                # They may be calling from another phone: ask for the ticket's phone or RO number.
+                store.record_audit(shop.shop_id, "repair_status.lookup", outcome="needs_info")
+                return REPAIR_STATUS_NEEDS
             store.record_audit(shop.shop_id, "repair_status.lookup", outcome="failed")
             return REPAIR_STATUS_FAILURE
         r = hits[0]
@@ -820,8 +781,15 @@ def create_app() -> FastAPI:
             "vehicle": r["vehicle"],
             "status": STATUS_TEXT.get(r["status"], r["status"]),
             "details": r["note"],
-            "eta": r["eta"],
             "estimated_balance": r["balance_estimate"],
+            **describe_eta(
+                status=r["status"],
+                eta_at=r["eta_at"],
+                eta_note=r["eta"],
+                updated_at=r["updated_at"],
+                now=datetime.now(shop.tz),
+                shop_tz=shop.tz,
+            ),
         }
 
     @app.post("/tools/request_tow", dependencies=[Depends(check_secret)])
@@ -949,7 +917,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Not Found")
         check_admin(authorization)
         store.reset_shop(settings.shop_id)
-        for record in DEMO_REPAIR_ORDERS:
+        for record in demo_repair_orders(default_shop.tz):
             store.upsert_repair_order(settings.shop_id, **record)
         return {"reset": True}
 

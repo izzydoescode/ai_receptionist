@@ -5,6 +5,6 @@ calls:
   - tool: check_repair_status
     args: {last_name: Rivera, phone: "305-555-0101"}
     expect: {ok: true, found: true, ro_number: "1001", customer_first_name: Carlos, status: waiting on parts}
-    expect_contains: {eta: Tomorrow}
+    expect_contains: {eta: tomorrow by 3 PM}
 audit:
   - {event: repair_status.lookup, outcome: verified}
