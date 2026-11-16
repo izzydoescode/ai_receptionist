@@ -41,6 +41,9 @@ SHOP_ID = {"type": "string", "dynamic_variable": "shop_id"}
 # Filled from the conversation_id dynamic variable so staff can find an unknown-number
 # message in the ElevenLabs dashboard without storing the dialed number.
 CONVERSATION_ID = {"type": "string", "dynamic_variable": "conversation_id"}
+# The number the caller is dialing from (blank on web test calls). The backend uses it as the
+# phone factor for repair-status checks only when the caller didn't read out a number.
+CALLER_PHONE = {"type": "string", "dynamic_variable": "system__caller_id"}
 
 ON_FALSE = (
     " If it returns ok=false with invalid_input, re-ask for that field. "
@@ -74,12 +77,13 @@ TOOLS = {
         ["customer_name", "phone", "vehicle", "service", "preferred_date", "preferred_time"],
     ),
     "check_repair_status": (
-        "Look up the status of a car that is already at the shop. Requires the customer's last name AND either the phone number on the ticket or the repair order number. The repair order number is at the top of the written estimate if they got one, or on the deposit receipt if they already dropped the car off and paid a deposit. Ask for both before calling. If found=false with 'needs', ask for what's missing; if it can't verify, offer to take a message."
+        "Look up the status of a car that is already at the shop. Verifies with the customer's last name plus either the phone number on the ticket or the repair order number. Ask for the last name and call right away: the caller ID is checked automatically, so a caller phoning from the number on the ticket needs nothing else. The repair order number is at the top of the written estimate if they got one, or on the deposit receipt if they already dropped the car off and paid a deposit. If found=false with 'needs', ask for what's missing; if it can't verify, offer to take a message."
         + ON_FALSE,
         {
             "last_name": S("Customer last name as on the repair order"),
             "phone": S("Phone number on the repair order, digits only"),
             "ro_number": S("Repair order (RO) / ticket number"),
+            "caller_phone": CALLER_PHONE,
         },
         ["last_name"],
     ),

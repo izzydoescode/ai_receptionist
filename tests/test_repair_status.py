@@ -25,6 +25,8 @@ SUCCESS_KEYS = {
     "status",
     "details",
     "eta",
+    "eta_past_due",
+    "estimate_updated",
     "estimated_balance",
 }
 
@@ -155,7 +157,7 @@ def test_verified_status_has_only_public_fields(client, tool_headers, payload, r
     result = lookup(client, tool_headers, payload).json()
     assert result["ok"] is True
     assert result["found"] is True
-    assert set(result) == SUCCESS_KEYS
+    assert SUCCESS_KEYS <= set(result) <= SUCCESS_KEYS | {"message"}
     assert result["ro_number"] == ro
     assert result["customer_first_name"] == first_name
     assert result["vehicle"] == vehicle
@@ -190,7 +192,8 @@ def test_last_name_of_only_format_characters_is_treated_as_missing(client, tool_
 
 def test_generator_repair_status_schema_requires_last_name():
     description, properties, required = load_script("make_tools").TOOLS["check_repair_status"]
-    assert set(properties) == {"last_name", "phone", "ro_number"}
+    assert set(properties) == {"last_name", "phone", "ro_number", "caller_phone"}
+    assert properties["caller_phone"] == {"type": "string", "dynamic_variable": "system__caller_id"}
     assert required == ["last_name"]
     lower = description.lower()
     assert "last name" in lower
@@ -207,6 +210,7 @@ def test_committed_repair_status_properties():
         "last_name",
         "phone",
         "ro_number",
+        "caller_phone",
         "shop_id",
     }
 
@@ -248,3 +252,65 @@ def test_lookup_records_private_audit(client, tool_headers, payload, outcome):
     assert event["event"] == "repair_status.lookup"
     assert event["outcome"] == outcome
     assert all(value not in str(column) for column in event.values() for value in ("Rivera", "Unknown", "+13055550101"))
+
+
+def test_caller_id_stands_in_for_the_phone_factor(client, tool_headers):
+    result = lookup(client, tool_headers, {"last_name": "Rivera", "caller_phone": "+13055550101"}).json()
+    assert result["found"] is True
+    assert result["ro_number"] == "1001"
+
+
+def test_spoken_phone_wins_over_caller_id(client, tool_headers):
+    # Calling from someone else's phone: the number the caller reads out is the one checked.
+    payload = {"last_name": "Rivera", "phone": "3055550101", "caller_phone": "+17865550999"}
+    assert lookup(client, tool_headers, payload).json()["found"] is True
+
+
+@pytest.mark.parametrize("caller_phone", ["", "anonymous", "{{system__caller_id}}", "+1305"])
+def test_unusable_caller_id_is_ignored(client, tool_headers, caller_phone):
+    assert lookup(client, tool_headers, {"last_name": "Rivera", "caller_phone": caller_phone}).json() == NEED
+
+
+def test_caller_id_that_does_not_match_asks_for_the_ticket_details(client, tool_headers):
+    # Calling from a different phone is normal; ask for the ticket's phone or RO instead of failing.
+    assert lookup(client, tool_headers, {"last_name": "Rivera", "caller_phone": "+17865550999"}).json() == NEED
+
+
+def test_caller_id_with_a_wrong_ro_still_fails(client, tool_headers):
+    payload = {"last_name": "Rivera", "ro_number": "1002", "caller_phone": "+13055550101"}
+    assert lookup(client, tool_headers, payload).json() == FAIL
+
+
+def test_demo_eta_is_spoken_relative_to_today(client, tool_headers):
+    result = lookup(client, tool_headers, {"last_name": "Rivera", "ro_number": "1001"}).json()
+    assert result["eta"] == "tomorrow by 3 PM"
+    assert result["eta_past_due"] is False
+    assert result["estimate_updated"] == "today"
+    assert "message" not in result
+
+
+def test_past_due_eta_asks_the_agent_to_offer_a_message(client, tool_headers):
+    from datetime import UTC, datetime, timedelta
+
+    store = client.app.state.store
+    shop = client.app.state.settings.shop_id
+    order = next(r for r in store.list_repair_orders(shop) if r["ro_number"] == "1001")
+    fields = {
+        key: order[key]
+        for key in ("customer_name", "phone", "plate", "vehicle", "status", "note", "eta", "balance_estimate")
+    }
+    store.upsert_repair_order(shop, ro_number="1001", **{**fields, "eta_at": datetime.now(UTC) - timedelta(hours=2)})
+    result = lookup(client, tool_headers, {"last_name": "Rivera", "ro_number": "1001"}).json()
+    assert result["eta_past_due"] is True
+    assert "running past the estimate" in result["message"]
+
+
+def test_picked_up_orders_no_longer_answer(client, tool_headers):
+    store = client.app.state.store
+    shop = client.app.state.settings.shop_id
+    order = next(r for r in store.list_repair_orders(shop) if r["ro_number"] == "1003")
+    fields = {
+        key: order[key] for key in ("customer_name", "phone", "plate", "vehicle", "note", "eta", "balance_estimate")
+    }
+    store.upsert_repair_order(shop, ro_number="1003", status="picked_up", **fields)
+    assert lookup(client, tool_headers, {"last_name": "Brooks", "ro_number": "1003"}).json() == FAIL

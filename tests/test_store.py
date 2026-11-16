@@ -93,7 +93,7 @@ def test_schema_contract(engine):
     assert set(inspector.get_table_names()) == TABLES
     extras = {
         "appointments": set(APPOINTMENT) | {"slot_start", "bay"},
-        "repair_orders": set(REPAIR) | {"updated_at"},
+        "repair_orders": set(REPAIR) | {"updated_at", "eta_at"},
         "tows": set(TOW),
         "messages": set(MESSAGE) | {"vehicle", "conversation_id"},
         "audit_events": {"event", "entity_public_id", "outcome"},

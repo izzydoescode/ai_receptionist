@@ -18,6 +18,7 @@ PUBLIC_BASE_URL=https://bear.example.com python tools/make_tools.py
 Each generated tool has:
 - the headers `Content-Type: application/json`, `X-Tool-Secret` (a secret reference), and `X-Conversation-Id` (bound to `system__conversation_id`, so backend logs can be traced to a call)
 - a required `shop_id` body parameter bound to the `shop_id` dynamic variable that the call-start webhook returns. It has no description, so the LLM never fills it in.
+- on `check_repair_status` only, a `caller_phone` body parameter bound to the system variable `system__caller_id`. The backend uses it as the phone factor only when the caller didn't read out a number, so a caller phoning from the number on the ticket just gives a last name. It is blank on browser test calls, which the backend ignores.
 - a `response_timeout_secs` of 10
 
 ## Manual setup (ElevenLabs dashboard)
