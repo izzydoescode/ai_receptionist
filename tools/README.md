@@ -44,3 +44,13 @@ This fills in the secret reference and posts each config to `POST /v1/convai/too
 env -u PUBLIC_BASE_URL python tools/make_tools.py
 python -c "import sys; sys.path.insert(0, 'tools'); import make_tools; make_tools.main(out_dir='tests/fixtures/tools', environ={'PUBLIC_BASE_URL': 'https://bear.example.test'})"
 ```
+
+## Live rehearsal
+After the agent and tools exist, check that the real agent picks the right tool and arguments from caller lines in EN, ES, FR and Kreyòl:
+
+```bash
+python tools/rehearse.py --dry-run          # no key: validates tools/rehearsal_cases.yaml and prints the test payloads
+ELEVENLABS_API_KEY=... ELEVENLABS_AGENT_ID=... python tools/rehearse.py --repeat 3
+```
+
+It creates one ElevenLabs agent test per case, runs each 3 times, prints a pass table, deletes the tests, and exits non-zero if any run failed. Then do the real calls in `docs/PHONE_TEST_CHECKLIST.md`.
