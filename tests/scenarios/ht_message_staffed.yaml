@@ -1,7 +1,6 @@
 name: ht_message_staffed
 language: ht
-description: Same Kreyòl caller, but this shop lists Haitian Creole in callback_languages, so the Kreyòl callback line is promised.
-shop: {callback_languages: [en, es, ht]}
+description: Same Kreyòl caller at the demo shop, which lists Haitian Creole in callback_languages, so the Kreyòl callback line is promised.
 calls:
   - tool: take_message
     args:

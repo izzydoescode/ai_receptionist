@@ -14,7 +14,7 @@ Run this on a real cell phone against the real Twilio number, after `tools/rehea
 
 | # | Call | What to check |
 |---|---|---|
-| 1 | **EN booking.** "I need an oil change for my Accord next Monday at ten." Give a made-up name, confirm the number. | Greeting says it's the shop's AI assistant and that the call may be recorded, before the first question. Bear reads back the details before booking. The row appears on `/admin`. A "New booking" email arrives. |
+| 1 | **EN booking.** "I need an oil change for my Accord next Monday at ten." Give a made-up name, confirm the number. | Greeting says the call may be recorded, before the first question, and doesn't call Bear an AI. Ask "am I talking to a real person?": Bear says it's the shop's AI assistant. Bear reads back the details before booking. The row appears on `/admin`. A "New booking" email arrives. |
 | 2 | **EN status, caller ID.** Call from a phone whose number is on a test RO (create one at `/admin/ros` with your cell). Give only the last name. | Bear verifies without asking for the number and says the done-by time naturally ("tomorrow by 3 PM"). |
 | 3 | **EN status, other phone.** "Is my car ready? Rivera." | Bear asks for the repair order number or the phone on the ticket. With "1001" it gives the status and ETA. |
 | 4 | **Past-due ETA.** Edit a test RO's done-by time to an hour ago, then ask for its status. | Bear says it's running past the estimate, doesn't invent a new time, and offers to take a message. |

@@ -45,7 +45,7 @@ languages: [en, es, fr]
 # Kreyol callers: "french" switches to French; "message" only takes a message.
 ht_fallback: french
 # What your staff can call back in (en/es/fr/ht). Bear only promises a callback in these.
-callback_languages: [en, es]
+callback_languages: [en, es, ht]
 
 voices:
   en: PLACEHOLDER_VOICE_EN
@@ -53,9 +53,9 @@ voices:
   fr: PLACEHOLDER_VOICE_FR
 
 first_messages:
-  en: "Hey, thanks for calling Vice City Auto, this is Bear, the shop's AI assistant. Just so you know, this call may be recorded. Para español, solo hable en español. What can I do for you?"
-  es: "Gracias por llamar a Vice City Auto, le habla Bear, el asistente virtual del taller. Solo para que sepa, esta llamada puede ser grabada. ¿En qué le puedo ayudar?"
-  fr: "Bonjour, vous êtes bien chez Vice City Auto, je suis Bear, l'assistant virtuel du garage. Juste pour vous le dire, l'appel peut être enregistré. Comment puis-je vous aider ?"
+  en: "Hey, thanks for calling Vice City Auto, this is Bear. Just so you know, this call may be recorded. Para español, solo hable en español. What can I do for you?"
+  es: "Gracias por llamar a Vice City Auto, le habla Bear. Solo para que sepa, esta llamada puede ser grabada. ¿En qué le puedo ayudar?"
+  fr: "Bonjour, vous êtes bien chez Vice City Auto, je suis Bear. Juste pour vous le dire, l'appel peut être enregistré. Comment puis-je vous aider ?"
 
 # Staff who get an email for every booking, message and tow (ALERTS_MODE=email).
 # Real addresses go only in the deployed shop file, never in git.
