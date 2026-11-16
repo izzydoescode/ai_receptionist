@@ -263,7 +263,7 @@ def invalid_input(field, message):
 
 def validation_message(field, error):
     hints = {
-        "phone": "I'll need a 10-digit phone number, area code and all.",
+        "phone": "I'll need a 10-digit phone number, area code and all. If it's not a US number, just give me the plus sign and the country code first.",
         "preferred_date": "I'll need the date as year-month-day, like 2026-11-20.",
         "preferred_time": "I'll need the time in 24-hour format, like 09:30 or 14:00.",
         "language": "Language must be en, es, fr or ht.",

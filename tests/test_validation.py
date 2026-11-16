@@ -77,6 +77,13 @@ def test_invalid_phone(client, tool_headers, payloads, tool, phone):
 
 
 @pytest.mark.parametrize("tool", WRITE_TOOLS)
+def test_invalid_phone_hint_still_invites_international_callers(client, tool_headers, payloads, tool):
+    response = client.post(f"/tools/{tool}", json={**payloads[tool], "phone": "555-0101"}, headers=tool_headers)
+    message = response.json()["message"]
+    assert "plus sign" in message and "country code" in message
+
+
+@pytest.mark.parametrize("tool", WRITE_TOOLS)
 @pytest.mark.parametrize("phone", ["(305) 555-0199", "305.555.0199", "+1 305 555 0199", "13055550199"])
 def test_phone_normalized(client, tool_headers, payloads, tool, phone):
     assert accept(client, tool_headers, payloads, tool, phone=phone)["phone"] == "+13055550199"
