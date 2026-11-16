@@ -1,0 +1,21 @@
+name: fr_book
+language: fr
+description: '"Je voudrais faire vérifier mes freins mardi à dix heures." A Kreyòl speaker the agent moved to French books in French, with language fr saved.'
+calls:
+  - tool: book_appointment
+    args:
+      customer_name: Jacques Pierre-Louis
+      phone: "954-555-0163"
+      vehicle: 2016 Toyota Corolla
+      service: vérification des freins
+      preferred_date: "{next_tuesday}"
+      preferred_time: "10:00"
+      language: fr
+    expect: {ok: true, booked: true}
+db_counts: {appointments: 1}
+db:
+  appointments:
+    - {customer_name: Jacques Pierre-Louis, service: vérification des freins, language: fr}
+audit:
+  - {event: appointment.booked}
+admin_contains: [Jacques Pierre-Louis, vérification des freins]

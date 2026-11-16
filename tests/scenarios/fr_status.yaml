@@ -1,0 +1,11 @@
+name: fr_status
+language: fr
+description: '"Est-ce que ma voiture est prête ?" The caller verifies with a hyphenated last name plus the RO number and hears a done-by time the agent can say in French.'
+calls:
+  - tool: check_repair_status
+    args: {last_name: Jean-Baptiste, ro_number: "1002"}
+    expect: {ok: true, found: true, ro_number: "1002", customer_first_name: Marie, eta_past_due: false}
+    expect_contains: {eta: by 5 PM}
+    expect_not_in_response: ["+17865550102", Marie Jean-Baptiste]
+audit:
+  - {event: repair_status.lookup, outcome: verified}

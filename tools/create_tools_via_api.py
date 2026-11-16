@@ -62,7 +62,7 @@ def main(tools_dir=None, environ=None):
                 payload = json.loads(detail)
                 detail = payload.get("detail", detail)
             except ValueError:
-                pass
+                pass  # Not JSON (e.g. an HTML error page): print the raw body as it came back.
             print(f"HTTP {error.code} creating {path.name}: {detail}", file=sys.stderr)
             if created:
                 print(

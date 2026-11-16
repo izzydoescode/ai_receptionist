@@ -1,0 +1,15 @@
+name: en_status_caller_id
+language: en
+description: Caller phones from the number on the ticket, gives only a last name, and hears when the car will be done.
+calls:
+  - tool: check_repair_status
+    args: {last_name: Rivera, caller_phone: "+13055550101"}
+    expect: {ok: true, found: true, ro_number: "1001", eta_past_due: false}
+    expect_contains: {eta: tomorrow by 3 PM}
+    expect_not_in_response: ["+13055550101", Carlos Rivera]
+  - tool: check_repair_status
+    args: {last_name: Gomez, caller_phone: "+17865550999"}
+    expect: {ok: true, found: false, needs: [last_name, phone_or_ro_number]}
+audit:
+  - {event: repair_status.lookup, outcome: verified}
+  - {event: repair_status.lookup, outcome: needs_info}

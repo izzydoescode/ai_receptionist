@@ -35,15 +35,31 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, BeforeValidator, Field, ValidationError
+from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
-from bear.alerts import send_staff_alert, warn_if_prod_log_only
+from bear.admin import build_admin_router
+from bear.alerts import MODES as ALERT_MODES
+from bear.alerts import AlertTarget, StaffAlerter, resend_sender, warn_if_prod_log_only
 from bear.db import check_schema, make_engine
+from bear.eta import describe_eta
 from bear.initiation import InitRequest, shop_initiation, unknown_initiation
 from bear.post_call import parse_transcription
-from bear.seed import DEMO_REPAIR_ORDERS
+from bear.seed import demo_repair_orders
 from bear.shops import LANGUAGE_NAMES, SHOP_ID_PATTERN, TOW_FALLBACK_REPLY, UNKNOWN_SHOP_ID, ShopConfig, load_shops
 from bear.store import SlotFull, Store
+from bear.validation import (
+    Name,
+    OptionalName,
+    OptionalText,
+    Phone,
+    Text,
+    clean_text,
+    integer_to_string,
+    lowercase,
+    normalize_phone,
+    validate_date,
+)
 from bear.webhook_signature import SignatureError, verify_signature
 
 POST_CALL_MAX_BYTES = 2 * 1024 * 1024  # transcription events only; leave "Send audio data" off
@@ -64,6 +80,9 @@ class Settings:
     tool_deadline_ms: int = 4000
     admin_user: str = "admin"
     alerts_mode: str = "log"
+    alerts_email_api_key: str = ""
+    alerts_email_from: str = ""
+    public_base_url: str = ""
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -74,8 +93,8 @@ class Settings:
         except ValueError:
             raise RuntimeError("TOOL_DEADLINE_MS must be a positive integer") from None
         alerts_mode = os.getenv("ALERTS_MODE", "log")
-        if alerts_mode not in {"log", "off"}:
-            raise RuntimeError("ALERTS_MODE must be log or off")
+        if alerts_mode not in ALERT_MODES:
+            raise RuntimeError("ALERTS_MODE must be off, log or email")
         return cls(
             tool_deadline_ms=deadline_ms,
             tool_secret=os.getenv("TOOL_SECRET", ""),
@@ -89,6 +108,9 @@ class Settings:
             shop_id=os.getenv("SHOP_ID", "vice-city-auto"),
             shops_dir=os.getenv("SHOPS_DIR") or str(DEFAULT_SHOPS_DIR),
             alerts_mode=alerts_mode,
+            alerts_email_api_key=os.getenv("ALERTS_EMAIL_API_KEY", ""),
+            alerts_email_from=os.getenv("ALERTS_EMAIL_FROM", ""),
+            public_base_url=os.getenv("PUBLIC_BASE_URL", "").rstrip("/"),
         )
 
 
@@ -99,6 +121,9 @@ STATUS_TEXT = {
     "awaiting_approval": "waiting for the customer's approval on the estimate",
     "diagnosing": "being diagnosed",
 }
+# Staff close a repair order by marking it picked up; closed orders no longer answer status lookups.
+CLOSED_STATUS = "picked_up"
+RO_STATUS_LABELS = {**STATUS_TEXT, CLOSED_STATUS: "picked up (closed)"}
 
 
 # Said only when the shop lists the language in callback_languages (docs/SHOPS.md).
@@ -140,76 +165,8 @@ def normalize_name(value: str) -> str:
 
 
 # ---------- validation and transport ----------
-# ZWNJ and ZWJ are format characters but must be kept for Persian (and
-# similar scripts) and for emoji sequences.
-KEEP_FORMAT = {"‌", "‍"}
 
 
-def clean_text(value):
-    if isinstance(value, str):
-        chars = []
-        for char in value:
-            category = unicodedata.category(char)
-            if category == "Cf" and char not in KEEP_FORMAT:
-                continue  # ZWSP, bidi controls, BOM
-            chars.append(" " if category == "Cc" else char)
-        return " ".join("".join(chars).split())
-    return value
-
-
-def integer_to_string(value):
-    return str(value) if isinstance(value, int) and not isinstance(value, bool) else value
-
-
-def is_nanp(digits):
-    # Area code and exchange must be [2-9]XX; this rejects 000-000-0000 and similar fakes.
-    return bool(re.fullmatch(r"[2-9]\d{2}[2-9]\d{6}", digits))
-
-
-# ext, ext., x, #, or "extension", so "…3456 ext 4" is not stored as …34564.
-PHONE_EXTENSION = re.compile(r"(?i)(?:\bextension\b|\bext\.|\bext\b|\bx\b|x\s*\d|#)")
-
-
-def normalize_phone(value):
-    value = integer_to_string(value)
-    if not isinstance(value, str):
-        raise ValueError("invalid phone")
-    if PHONE_EXTENSION.search(value):
-        raise ValueError("phone extension")
-    if len(value) > 32:
-        raise ValueError("invalid phone")
-    plus = value.strip().startswith("+")
-    digits = re.sub(r"\D", "", value)
-    # E.164 country codes are 1-9; a leading 0 is not a valid country code.
-    if plus and re.fullmatch(r"[1-9]\d{7,14}", digits):
-        if digits.startswith("1"):
-            # Country code 1 is NANP and must be +1 plus a 10-digit national number.
-            if len(digits) != 11 or not is_nanp(digits[1:]):
-                raise ValueError("invalid phone")
-        return "+" + digits
-    if len(digits) == 10 and is_nanp(digits):
-        return "+1" + digits
-    if len(digits) == 11 and digits.startswith("1") and is_nanp(digits[1:]):
-        return "+" + digits
-    raise ValueError("invalid phone")
-
-
-def validate_date(value):
-    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-        raise ValueError("invalid date")
-    date.fromisoformat(value)
-    return value
-
-
-def lowercase(value):
-    return value.lower() if isinstance(value, str) else value
-
-
-Name = Annotated[str, Field(min_length=1, max_length=80), BeforeValidator(clean_text)]
-Text = Annotated[str, Field(min_length=1, max_length=500), BeforeValidator(clean_text)]
-OptionalName = Annotated[str, Field(max_length=80), BeforeValidator(clean_text)]
-OptionalText = Annotated[str, Field(max_length=500), BeforeValidator(clean_text)]
-Phone = Annotated[str, BeforeValidator(normalize_phone)]
 Language = Annotated[Literal["en", "es", "fr", "ht"], BeforeValidator(lowercase)]
 Urgency = Annotated[Literal["low", "normal", "high"], BeforeValidator(lowercase)]
 
@@ -232,6 +189,9 @@ class BookAppointment(ToolRequest):
 
 class RepairStatus(ToolRequest):
     phone: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=32)
+    # Filled from the system__caller_id dynamic variable, never by the LLM. Used as the phone
+    # factor only when the caller didn't give one; blank or non-numeric values are ignored.
+    caller_phone: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=32)
     ro_number: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=20)
     last_name: Annotated[str | None, BeforeValidator(clean_text)] = Field(default=None, max_length=80)
 
@@ -556,6 +516,8 @@ def create_app() -> FastAPI:
     if not settings.post_call_webhook_secret:
         logging.getLogger("bear").warning("POST_CALL_WEBHOOK_SECRET is unset; post-call summaries are disabled")
     warn_if_prod_log_only(settings.alerts_mode, settings.env)
+    if settings.alerts_mode == "email" and not (settings.alerts_email_api_key and settings.alerts_email_from):
+        raise RuntimeError("ALERTS_MODE=email needs ALERTS_EMAIL_API_KEY and ALERTS_EMAIL_FROM")
 
     if not re.fullmatch(SHOP_ID_PATTERN, settings.shop_id):
         raise RuntimeError("invalid SHOP_ID")
@@ -563,6 +525,12 @@ def create_app() -> FastAPI:
     if settings.shop_id not in shops:
         raise RuntimeError(f"SHOP_ID {settings.shop_id} has no shop file in SHOPS_DIR")
     default_shop = shops[settings.shop_id]
+    if (
+        settings.database_url.startswith("sqlite:")
+        and settings.env != "dev"
+        and "PYTEST_CURRENT_TEST" not in os.environ
+    ):
+        raise RuntimeError("SQLite is only allowed when BEAR_ENV=dev; set DATABASE_URL to Postgres in production")
     engine = None
     try:
         engine = make_engine(settings.database_url, timeout_seconds=settings.tool_deadline_ms / 1000)
@@ -581,6 +549,7 @@ def create_app() -> FastAPI:
         try:
             yield
         finally:
+            alerter.close()
             engine.dispose()
 
     app = FastAPI(lifespan=lifespan, title=f"{default_shop.name} AI Receptionist tools", version="0.1.0")
@@ -588,6 +557,31 @@ def create_app() -> FastAPI:
     app.state.shops = shops
     shops_by_number = {shop.twilio_number: shop for shop in shops.values()}
     store = app.state.store = Store(engine, write_guard=check_deadline)
+    alerter = app.state.alerter = StaffAlerter(
+        settings.alerts_mode,
+        email_sender=(
+            resend_sender(settings.alerts_email_api_key, settings.alerts_email_from)
+            if settings.alerts_mode == "email"
+            else None
+        ),
+        record_outcome=lambda shop_id, public_id, outcome: store.record_audit(
+            shop_id, "alert.email", public_id, outcome=outcome
+        ),
+    )
+    if settings.alerts_mode == "email":
+        for shop in shops.values():
+            if not shop.alerts.email:
+                logging.getLogger("bear").warning(
+                    "ALERTS_MODE=email but shop %s lists no alerts.email recipients", shop.shop_id
+                )
+
+    def alert_target(shop_id: str) -> AlertTarget:
+        # Messages from numbers no shop owns go to the default shop's staff.
+        shop = shops.get(shop_id, default_shop)
+        admin_url = f"{settings.public_base_url}/admin?shop={shop_id}" if settings.public_base_url else None
+        name = shop.name if shop_id in shops else "Unrecognized number"
+        return AlertTarget(shop_id=shop_id, shop_name=name, recipients=list(shop.alerts.email), admin_url=admin_url)
+
     app.add_middleware(ToolTransportMiddleware, tool_secret=settings.tool_secret)
     app.add_middleware(
         RequestLoggingMiddleware, deadline_ms=settings.tool_deadline_ms, default_shop_id=settings.shop_id
@@ -671,6 +665,15 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health():
         return {"ok": True, "time": datetime.now(default_shop.tz).isoformat()}
+
+    @app.get("/ready")
+    def ready():
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        except Exception:
+            raise HTTPException(status_code=503, detail="database unavailable") from None
+        return {"ok": True}
 
     @app.post("/elevenlabs/init", dependencies=[Depends(check_init_secret)])
     async def elevenlabs_init(request: Request):
@@ -769,7 +772,20 @@ def create_app() -> FastAPI:
                 "alternatives": next_slots(shop, max(dt, datetime.now(shop.tz))),
             }
         when = dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " ")
-        send_staff_alert(settings.alerts_mode, "booking", shop_id=shop.shop_id, public_id=appt["public_id"])
+        alerter.send(
+            "booking",
+            alert_target(shop.shop_id),
+            appt["public_id"],
+            {
+                "name": req.customer_name,
+                "phone": req.phone,
+                "vehicle": req.vehicle,
+                "service": req.service,
+                "when": when,
+                "notes": req.notes,
+                "language": req.language,
+            },
+        )
         return {
             "ok": True,
             "booked": True,
@@ -790,6 +806,10 @@ def create_app() -> FastAPI:
             return UNKNOWN_SHOP
         last_name = (req.last_name or "").strip()
         phone = (req.phone or "").strip()
+        caller_phone = (req.caller_phone or "").strip()
+        phone_from_caller_id = not phone and len(re.sub(r"\D", "", caller_phone)) >= 10
+        if phone_from_caller_id:
+            phone = caller_phone
         ro = (req.ro_number or "").strip()
         if not last_name or not (phone or ro):
             store.record_audit(shop.shop_id, "repair_status.lookup", outcome="needs_info")
@@ -799,6 +819,8 @@ def create_app() -> FastAPI:
         phone_digits = re.sub(r"\D", "", phone)
         hits = []
         for record in store.list_repair_orders(shop.shop_id):
+            if record["status"] == CLOSED_STATUS:
+                continue
             customer_tokens = record["customer_name"].split()
             if not customer_tokens or normalize_name(customer_tokens[-1]) not in names:
                 continue
@@ -808,6 +830,10 @@ def create_app() -> FastAPI:
                 continue
             hits.append(record)
         if len(hits) != 1:
+            if phone_from_caller_id and not ro:
+                # They may be calling from another phone: ask for the ticket's phone or RO number.
+                store.record_audit(shop.shop_id, "repair_status.lookup", outcome="needs_info")
+                return REPAIR_STATUS_NEEDS
             store.record_audit(shop.shop_id, "repair_status.lookup", outcome="failed")
             return REPAIR_STATUS_FAILURE
         r = hits[0]
@@ -820,8 +846,15 @@ def create_app() -> FastAPI:
             "vehicle": r["vehicle"],
             "status": STATUS_TEXT.get(r["status"], r["status"]),
             "details": r["note"],
-            "eta": r["eta"],
             "estimated_balance": r["balance_estimate"],
+            **describe_eta(
+                status=r["status"],
+                eta_at=r["eta_at"],
+                eta_note=r["eta"],
+                updated_at=r["updated_at"],
+                now=datetime.now(shop.tz),
+                shop_tz=shop.tz,
+            ),
         }
 
     @app.post("/tools/request_tow", dependencies=[Depends(check_secret)])
@@ -834,7 +867,21 @@ def create_app() -> FastAPI:
         fields = req.model_dump(exclude={"shop_id"})
         fields["destination"] = req.destination or shop.name
         tow = store.create_tow(shop.shop_id, **fields, status="dispatch_requested")
-        send_staff_alert(settings.alerts_mode, "tow", shop_id=shop.shop_id, public_id=tow["public_id"])
+        alerter.send(
+            "tow",
+            alert_target(shop.shop_id),
+            tow["public_id"],
+            {
+                "name": req.customer_name,
+                "phone": req.phone,
+                "vehicle": req.vehicle,
+                "pickup_location": req.pickup_location,
+                "issue": req.issue,
+                "is_safe": req.is_safe,
+                "destination": fields["destination"],
+                "language": req.language,
+            },
+        )
         if shop.features.tow_dispatch:
             msg = (
                 "I've gone ahead and logged the tow. A dispatcher will call you back "
@@ -859,7 +906,19 @@ def create_app() -> FastAPI:
                 return UNKNOWN_SHOP
             shop_id, staffed = shop.shop_id, shop.callback_languages
         m = store.create_message(shop_id, **req.model_dump(exclude={"shop_id"}))
-        send_staff_alert(settings.alerts_mode, "message", shop_id=shop_id, public_id=m["public_id"])
+        alerter.send(
+            "message",
+            alert_target(shop_id),
+            m["public_id"],
+            {
+                "name": req.caller_name,
+                "phone": req.phone,
+                "reason": req.reason,
+                "urgency": req.urgency,
+                "callback_language": req.callback_language,
+                "vehicle": req.vehicle,
+            },
+        )
         language = req.callback_language
         if language == "en":
             lang = ""
@@ -930,12 +989,18 @@ def create_app() -> FastAPI:
             }
 
         calls = [call_row(row) for row in db["call_summaries"]]
+        repair_orders_link = (
+            ""
+            if shop == UNKNOWN_SHOP_ID
+            else f'<p><a href="/admin/ros?shop={html.escape(shop, quote=True)}">Manage repair orders</a></p>'
+        )
 
         return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(board_name), quote=True)} board</title>
     <style>body{{font-family:system-ui;margin:24px}}table{{border-collapse:collapse;margin-bottom:24px}}
     td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}
     th.standout{{background:#4a3b14}}td.urgency-high{{background:#f6c1c1;font-weight:700}}td.callback-other{{background:#ffe08a;font-weight:700}}</style></head><body>
     <h1>{html.escape(str(board_name), quote=True)}: AI receptionist live board</h1>
+    {repair_orders_link}
     <h2>Appointments</h2>{table(db["appointments"], ["public_id", "slot_start", "customer_name", "phone", "vehicle", "service", "language"])}
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
     <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "vehicle", "reason", "urgency", "callback_language", "conversation_id"])}
@@ -943,13 +1008,24 @@ def create_app() -> FastAPI:
     <h2>Recent calls</h2>{table(calls, ["started_at", "duration", "outcome", "title", "summary", "language", "conversation_id"])}
     </body></html>"""
 
+    app.include_router(
+        build_admin_router(
+            store=store,
+            shops=shops,
+            default_shop_id=settings.shop_id,
+            check_admin=check_admin,
+            status_labels=RO_STATUS_LABELS,
+            closed_status=CLOSED_STATUS,
+        )
+    )
+
     @app.post("/admin/reset")
     def reset(authorization: str | None = Header(default=None)):
         if settings.env != "dev":
             raise HTTPException(status_code=404, detail="Not Found")
         check_admin(authorization)
         store.reset_shop(settings.shop_id)
-        for record in DEMO_REPAIR_ORDERS:
+        for record in demo_repair_orders(default_shop.tz):
             store.upsert_repair_order(settings.shop_id, **record)
         return {"reset": True}
 

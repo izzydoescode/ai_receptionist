@@ -85,6 +85,7 @@ Language = Literal["en", "es", "fr"]
 # Languages staff can return calls in; Kreyòl is possible here even though the voice agent can't speak it.
 CallbackLanguage = Literal["en", "es", "fr", "ht"]
 VoiceId = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
+EmailAddress = Annotated[str, Field(pattern=r"^[^@\s<>,;]+@[^@\s<>,;]+\.[^@\s<>,;]+$", max_length=254)]
 
 
 class _Frozen(BaseModel):
@@ -132,6 +133,12 @@ class Features(_Frozen):
     photo_texting: bool = False
 
 
+class Alerts(_Frozen):
+    # Who gets an email for every booking, message and tow when ALERTS_MODE=email.
+    # Keep real addresses out of git: set them in the deployed shop file.
+    email: list[EmailAddress] = Field(default=[], max_length=10)
+
+
 class Persona(_Frozen):
     name: Label
     style: Annotated[str, Field(min_length=1, max_length=200)] | None = None
@@ -156,6 +163,7 @@ class ShopConfig(_Frozen):
     voices: dict[Language, VoiceId]
     first_messages: dict[Language, Annotated[str, Field(min_length=1, max_length=500)]]
     features: Features = Features()
+    alerts: Alerts = Alerts()
     persona: Persona
 
     @field_validator("shop_id")

@@ -4,7 +4,7 @@ Each file is one call: the tool calls the ElevenLabs agent should make for one f
 
 ```yaml
 name: es_book                 # must match the file name
-language: es                  # es_* files must send and save language es on every write
+language: es                  # es_*, fr_* and ht_* files must send and save that language on every write
 description: what the caller says and why
 shop: {callback_languages: [en]}   # optional overrides for the demo shop file
 shops:                            # optional: more than one shop (each entry is overrides)
