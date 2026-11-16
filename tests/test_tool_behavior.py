@@ -73,13 +73,13 @@ def test_off_hour_booking_time_is_rejected(client, payloads, tool_headers):
         "field": "preferred_time",
         "message": result["message"],
     }
-    assert "on the hour" in result["message"].lower()
+    assert "starts a slot" in result["message"].lower()
     assert rows(client, "appointments") == []
 
 
 @pytest.mark.parametrize("shop_name", [None, "Another Demo Shop"])
 def test_safe_tow_is_logged_with_shop_as_default_destination(make_client, tmp_path, payloads, tool_headers, shop_name):
-    client = make_client(SHOP_NAME=shop_name)
+    client = make_client(_shops=[{"name": shop_name}] if shop_name else ())
     result = post(client, tool_headers, "request_tow", payloads["request_tow"])
     assert result["logged"] is True
     assert result["ticket"].startswith("T")
@@ -139,3 +139,36 @@ def test_missing_required_tool_field_returns_validation_envelope(client, payload
     response = client.post(f"/tools/{tool}", json=payload, headers=tool_headers)
     assert snapshot(client) == before
     assert_invalid(response, field)
+
+
+CLOSED_WEEK = {day: [] for day in ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")}
+
+
+def test_booking_follows_configured_hours_slot_size_and_bays(make_client, payloads, tool_headers):
+    hours = {**CLOSED_WEEK, "monday": [{"open": "10:00", "close": "12:00"}]}
+    client = make_client(_shops=[{"hours": hours, "slot_minutes": 30, "bays_per_slot": 1}])
+    payload = {**payloads["book_appointment"], "preferred_time": "10:15"}
+    off_grid = client.post("/tools/book_appointment", json=payload, headers=tool_headers).json()
+    assert off_grid["ok"] is False
+    assert off_grid["error"] == "invalid_input"
+    assert off_grid["field"] == "preferred_time"
+    assert rows(client, "appointments") == []
+    payload["preferred_time"] = "10:00"
+    assert post(client, tool_headers, "book_appointment", payload)["booked"] is True
+    (appointment,) = rows(client, "appointments")
+    assert appointment["slot_start"].astimezone(ZoneInfo("America/New_York")).strftime("%H:%M") == "10:00"
+    result = post(client, tool_headers, "book_appointment", payload)
+    assert result["message"] == "That slot is full."
+    assert [a.split(" at ")[1] for a in result["alternatives"]] == ["10:30 AM", "11:00 AM", "11:30 AM"]
+    closed = post(client, tool_headers, "book_appointment", {**payload, "preferred_time": "12:00"})
+    assert closed["message"] == "That day we take drop-offs from 10:00 AM to 12:00 PM."
+
+
+def test_booking_on_a_holiday_is_refused_and_skipped(make_client, payloads, tool_headers):
+    monday = future_day(0)
+    client = make_client(_shops=[{"holidays": [monday.isoformat()]}])
+    result = post(client, tool_headers, "book_appointment", payloads["book_appointment"])
+    assert result["booked"] is False
+    assert result["message"] == "We're closed that day for a holiday."
+    assert result["alternatives"][0].startswith("Tuesday")
+    assert rows(client, "appointments") == []

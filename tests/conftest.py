@@ -1,8 +1,11 @@
+import copy
 import importlib
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
 SECRET = "dummy-tool-secret-" + "x" * 22  # 40 characters
@@ -17,7 +20,23 @@ CONFIG_KEYS = (
     "SHOP_NAME",
     "SHOP_TZ",
     "TOOL_DEADLINE_MS",
+    "SHOPS_DIR",
 )
+EXAMPLE_SHOP = yaml.safe_load((Path(__file__).resolve().parents[1] / "shops/vice-city-auto.yaml").read_text("utf-8"))
+
+
+def write_shops(directory, *shops):
+    """Write shop files built from the example; each shop is a dict of top-level overrides.
+
+    Holidays default to none so date-relative tests never land on one.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    for index, overrides in enumerate(shops or ({},)):
+        data = copy.deepcopy(EXAMPLE_SHOP)
+        data.update(holidays=[], twilio_number=f"+130555501{10 + index}")
+        data.update(overrides)
+        (directory / f"{data['shop_id']}.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), "utf-8")
+    return directory
 
 
 def future_day(weekday):
@@ -29,13 +48,14 @@ def future_day(weekday):
 def make_client(monkeypatch, tmp_path):
     clients = []
 
-    def make(_schema=True, _seed=True, **env):
+    def make(_schema=True, _seed=True, _shops=(), **env):
         for key in CONFIG_KEYS:
             monkeypatch.delenv(key, raising=False)
         settings = {
             "TOOL_SECRET": SECRET,
             "ADMIN_PASSWORD": ADMIN_AUTH[1],
             "DATABASE_URL": f"sqlite:///{tmp_path}/bear-{len(clients)}.db",
+            "SHOPS_DIR": write_shops(tmp_path / f"shops-{len(clients)}", *_shops),
         }
         settings.update(env)
         for key, value in settings.items():

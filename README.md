@@ -63,6 +63,7 @@ Reset between runs (only when `BEAR_ENV=dev`): `curl -u "admin:$ADMIN_PASSWORD" 
 - `backend/main.py`, `backend/requirements.txt`, `backend/requirements-dev.txt`: FastAPI tool server (`create_app()` factory) with SQLAlchemy persistence (`backend/bear/`) and Alembic migrations
 - `tests/`: pytest suite (auth, admin escaping, repair-status verification, tool behaviour, tool scripts)
 - `.env.example`: every environment variable with placeholder values
+- `shops/*.yaml`: one config file per shop (hours, holidays, bays, numbers, languages, voices, greetings). See `docs/SHOPS.md`; `vice-city-auto.yaml` is the made-up demo shop
 - `tools/*.json`: ElevenLabs webhook tool configs. `make_tools.py` regenerates them with your ngrok URL, and `create_tools_via_api.py` is an optional API upload (not tested, since there was no key)
 - `agent/system_prompt.md`: persona, language rules, the 6 call flows, guardrails, and first messages in EN/ES/FR/HT
 - `agent/agent_config_notes.md`: settings, voice picking, Voice Design prompts, transfer rule
@@ -104,9 +105,8 @@ pip-compile --allow-unsafe --generate-hashes --no-strip-extras --output-file=bac
 | `BEAR_ENV` | no | none | Set to `dev` for local hacking: allows starting without `TOOL_SECRET` (tools are then open, with a warning) and enables `POST /admin/reset`. Never set it in production. |
 | `TOOL_DEADLINE_MS` | no | `4000` | Deadline in ms for `POST /tools/*` (positive integer; anything else stops startup). On timeout the tool returns `200 {"ok": false, "error": "timeout", ...}` and the abandoned worker can no longer save. `/health` and `/admin` have no deadline. |
 | `DATABASE_URL` | no | `sqlite:///./vicecity.db` | SQLAlchemy database URL, relative to the working directory for SQLite. Never log it. |
-| `SHOP_ID` | no | `vice-city-auto` | Shop used by tools; lowercase letters, digits and hyphens, starting with a letter or digit, up to 64 characters. |
-| `SHOP_NAME` | no | `Vice City Auto` | Shop name shown on the board and used as the default tow destination. |
-| `SHOP_TZ` | no | `America/New_York` | Shop time zone for slots and timestamps. |
+| `SHOP_ID` | no | `vice-city-auto` | Default shop used by tools; lowercase letters, digits and hyphens, starting with a letter or digit, up to 64 characters. It must have a file in `SHOPS_DIR`. |
+| `SHOPS_DIR` | no | the repo's `shops/` | Folder with one `<shop_id>.yaml` per shop. Every file is validated at startup and any problem stops the app. |
 
 Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `GET /admin` (HTTP Basic), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or RO number** on the ticket.
 
@@ -118,6 +118,7 @@ Neon (planned production DB): paste Neon's connection string as-is, e.g. `DATABA
 The app requires all five tables at startup and never creates or seeds them automatically. Demo data is optional: `python -m bear.seed --demo --shop vice-city-auto` upserts four repair orders. `/admin?shop=vice-city-auto` selects a shop's newest 50 rows per section. The dev reset clears only the configured shop and reloads its demo orders.
 
 ### Tool responses and input rules
+- Every tool body may include `shop_id` (defaults to `SHOP_ID`); a well-formed id with no shop file returns `200 {"ok": false, "error": "unknown_shop", ...}`.
 - Every tool reply has `ok`. Bad input comes back as `200 {"ok": false, "error": "invalid_input", "field": "...", "message": "<speakable hint>"}` so the agent can re-ask; an unexpected server error is `200 {"ok": false, "error": "internal_error", ...}`; a deadline miss is `error: "timeout"`.
 - Phones are normalized to E.164 (US default, 10 or 11 digits). Dates are `YYYY-MM-DD` within 60 days; times `HH:MM`. Names max 80 chars, free text max 500; control characters are stripped.
 - Before auth runs, `/tools/*` requires `Content-Type: application/json` (else 415), a body of at most 16 KB (else 413) and a JSON object (else 400).

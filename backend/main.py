@@ -29,7 +29,6 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
-from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.exception_handlers import request_validation_exception_handler
@@ -39,7 +38,10 @@ from pydantic import BaseModel, BeforeValidator, Field
 
 from bear.db import check_schema, make_engine
 from bear.seed import DEMO_REPAIR_ORDERS
+from bear.shops import SHOP_ID_PATTERN, ShopConfig, load_shops
 from bear.store import SlotFull, Store
+
+DEFAULT_SHOPS_DIR = Path(__file__).resolve().parent.parent / "shops"
 
 
 @dataclass(frozen=True)
@@ -49,10 +51,9 @@ class Settings:
     admin_password: str
     database_url: str
     shop_id: str
+    shops_dir: str = str(DEFAULT_SHOPS_DIR)
     tool_deadline_ms: int = 4000
     admin_user: str = "admin"
-    shop_name: str = "Vice City Auto"
-    shop_tz: ZoneInfo = ZoneInfo("America/New_York")
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -70,14 +71,9 @@ class Settings:
             admin_password=os.getenv("ADMIN_PASSWORD", ""),
             database_url=os.getenv("DATABASE_URL", "sqlite:///./vicecity.db"),
             shop_id=os.getenv("SHOP_ID", "vice-city-auto"),
-            shop_name=os.getenv("SHOP_NAME", "Vice City Auto"),
-            shop_tz=ZoneInfo(os.getenv("SHOP_TZ", "America/New_York")),
+            shops_dir=os.getenv("SHOPS_DIR") or str(DEFAULT_SHOPS_DIR),
         )
 
-
-OPEN_HOUR, CLOSE_HOUR = 8, 18  # Mon-Fri 8a-6p
-SAT_OPEN, SAT_CLOSE = 9, 14  # Sat 9a-2p, closed Sunday
-BAYS_PER_SLOT = 2
 
 STATUS_TEXT = {
     "waiting_on_parts": "waiting on parts",
@@ -87,6 +83,12 @@ STATUS_TEXT = {
     "diagnosing": "being diagnosed",
 }
 
+
+UNKNOWN_SHOP = {
+    "ok": False,
+    "error": "unknown_shop",
+    "message": "Sorry, this line isn't set up in our system yet. Ask the caller to call back later.",
+}
 
 REPAIR_STATUS_NEEDS = {
     "ok": True,
@@ -181,7 +183,12 @@ Language = Annotated[Literal["en", "es", "fr", "ht"], BeforeValidator(lowercase)
 Urgency = Annotated[Literal["low", "normal", "high"], BeforeValidator(lowercase)]
 
 
-class BookAppointment(BaseModel):
+class ToolRequest(BaseModel):
+    # Set by the agent's tool config (a dynamic variable), never by the LLM; omitted means SHOP_ID.
+    shop_id: str | None = Field(default=None, pattern=SHOP_ID_PATTERN)
+
+
+class BookAppointment(ToolRequest):
     customer_name: Name
     phone: Phone
     vehicle: Name = Field(description="year make model")
@@ -192,13 +199,13 @@ class BookAppointment(BaseModel):
     notes: OptionalText | None = None
 
 
-class RepairStatus(BaseModel):
+class RepairStatus(ToolRequest):
     phone: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=32)
     ro_number: Annotated[str | None, BeforeValidator(integer_to_string)] = Field(default=None, max_length=20)
     last_name: Annotated[str | None, BeforeValidator(clean_text)] = Field(default=None, max_length=80)
 
 
-class TowRequest(BaseModel):
+class TowRequest(ToolRequest):
     customer_name: Name
     phone: Phone
     vehicle: Name
@@ -209,7 +216,7 @@ class TowRequest(BaseModel):
     language: Language = "en"
 
 
-class TakeMessage(BaseModel):
+class TakeMessage(ToolRequest):
     caller_name: Name
     phone: Phone
     reason: Text
@@ -231,6 +238,7 @@ def validation_message(field, error):
         "callback_language": "Language must be en, es, fr or ht.",
         "urgency": "Urgency must be low, normal or high.",
         "is_safe": "I need to know if the caller is safe: true or false.",
+        "shop_id": "The shop id is not valid; check the tool configuration.",
     }
     label = field.replace("_", " ").capitalize()
     if error["type"] == "string_too_long":
@@ -288,9 +296,10 @@ def configure_logging():
 class RequestLoggingMiddleware:
     """Bound tool work and log only metadata, validated IDs and masked phones."""
 
-    def __init__(self, app, deadline_ms):
+    def __init__(self, app, deadline_ms, default_shop_id):
         self.app = app
         self.deadline_seconds = deadline_ms / 1000
+        self.default_shop_id = default_shop_id
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -398,13 +407,19 @@ class RequestLoggingMiddleware:
                 404: "not_found",
                 503: "unavailable",
             }.get(status)
-            if result.get("error") in {"invalid_input", "timeout", "internal_error"}:
+            if result.get("error") in {"invalid_input", "timeout", "internal_error", "unknown_shop"}:
                 error = result["error"]
                 if error == "invalid_input":
                     entry["field"] = result["field"]
             if error:
                 entry["error"] = error
-            phone = scope.get("state", {}).get("bear_body", {}).get("phone")
+            tool_body = scope.get("state", {}).get("bear_body", {})
+            if is_tool:
+                shop_id = tool_body.get("shop_id")
+                shop_id = self.default_shop_id if shop_id is None else shop_id
+                if isinstance(shop_id, str) and re.fullmatch(SHOP_ID_PATTERN, shop_id):
+                    entry["shop_id"] = shop_id
+            phone = tool_body.get("phone")
             if isinstance(phone, (str, int)) and not isinstance(phone, bool):
                 digits = re.sub(r"\D", "", str(phone))
                 if len(digits) >= 4:
@@ -483,8 +498,12 @@ def create_app() -> FastAPI:
     if not settings.tool_secret:
         logging.getLogger("bear").warning("TOOL_SECRET is unset; tool authentication is disabled in dev")
 
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", settings.shop_id):
+    if not re.fullmatch(SHOP_ID_PATTERN, settings.shop_id):
         raise RuntimeError("invalid SHOP_ID")
+    shops = load_shops(settings.shops_dir)
+    if settings.shop_id not in shops:
+        raise RuntimeError(f"SHOP_ID {settings.shop_id} has no shop file in SHOPS_DIR")
+    default_shop = shops[settings.shop_id]
     engine = None
     try:
         engine = make_engine(settings.database_url, timeout_seconds=settings.tool_deadline_ms / 1000)
@@ -505,11 +524,14 @@ def create_app() -> FastAPI:
         finally:
             engine.dispose()
 
-    app = FastAPI(lifespan=lifespan, title=f"{settings.shop_name} AI Receptionist tools", version="0.1.0")
+    app = FastAPI(lifespan=lifespan, title=f"{default_shop.name} AI Receptionist tools", version="0.1.0")
     app.state.settings = settings
+    app.state.shops = shops
     store = app.state.store = Store(engine, write_guard=check_deadline)
     app.add_middleware(ToolTransportMiddleware, tool_secret=settings.tool_secret)
-    app.add_middleware(RequestLoggingMiddleware, deadline_ms=settings.tool_deadline_ms)
+    app.add_middleware(
+        RequestLoggingMiddleware, deadline_ms=settings.tool_deadline_ms, default_shop_id=settings.shop_id
+    )
 
     @app.exception_handler(RequestValidationError)
     async def tool_validation_error(request, exc):
@@ -551,23 +573,20 @@ def create_app() -> FastAPI:
         return re.sub(r"\D", "", s or "")[-10:]
 
     # ---------- helpers ----------
-    def slot_ok(dt: datetime) -> str | None:
-        wd = dt.weekday()
-        if wd == 6:
-            return "We're closed Sundays."
-        o, c = (SAT_OPEN, SAT_CLOSE) if wd == 5 else (OPEN_HOUR, CLOSE_HOUR)
-        if not (o <= dt.hour < c):
-            return f"That day we take drop-offs between {o}:00 and {c}:00."
-        if dt < datetime.now(settings.shop_tz):
-            return "That time already passed."
-        return None
+    def resolve_shop(shop_id: str | None) -> ShopConfig | None:
+        return shops.get(settings.shop_id if shop_id is None else shop_id)
 
-    def next_slots(start: datetime, n: int = 3) -> list[str]:
-        out, t = [], start.replace(minute=0, second=0, microsecond=0)
-        counts = store.booked_counts(settings.shop_id, t, t + timedelta(hours=24 * 14 + 1))
-        for _ in range(24 * 14):
-            t += timedelta(hours=1)
-            if slot_ok(t) is None and counts.get(t.astimezone(UTC), 0) < BAYS_PER_SLOT:
+    def slot_problem(shop: ShopConfig, dt: datetime) -> str | None:
+        reason = shop.closed_reason(dt)
+        if reason is None and dt < datetime.now(shop.tz):
+            return "That time already passed."
+        return reason
+
+    def next_slots(shop: ShopConfig, start: datetime, n: int = 3) -> list[str]:
+        out = []
+        counts = store.booked_counts(shop.shop_id, start, start + timedelta(days=15))
+        for t in shop.upcoming_slots(start, days=14):
+            if counts.get(t.astimezone(UTC), 0) < shop.bays_per_slot:
                 out.append(t.strftime("%A %b %d at %I:%M %p").replace(" 0", " "))
                 if len(out) == n:
                     break
@@ -576,24 +595,26 @@ def create_app() -> FastAPI:
     # ---------- endpoints ----------
     @app.get("/health")
     def health():
-        return {"ok": True, "time": datetime.now(settings.shop_tz).isoformat()}
+        return {"ok": True, "time": datetime.now(default_shop.tz).isoformat()}
 
     @app.post("/tools/book_appointment", dependencies=[Depends(check_secret)])
     def book_appointment(req: BookAppointment):
-        if date.fromisoformat(req.preferred_date) > datetime.now(settings.shop_tz).date() + timedelta(days=60):
+        shop = resolve_shop(req.shop_id)
+        if shop is None:
+            return UNKNOWN_SHOP
+        if date.fromisoformat(req.preferred_date) > datetime.now(shop.tz).date() + timedelta(days=60):
             return invalid_input("preferred_date", "I can only book up to 60 days out.")
-        dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(
-            tzinfo=settings.shop_tz
-        )
-        if dt.minute or dt.second or dt.microsecond:
-            return invalid_input("preferred_time", "I need a time on the hour, like 09:00 or 14:00.")
-        problem = slot_ok(dt)
+        dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(tzinfo=shop.tz)
+        slot = shop.slot_start(dt)
+        if slot is not None and slot != dt:
+            step = shop.slot_minutes
+            example = f"09:00 or {9 + step // 60}:{step % 60:02d}"
+            return invalid_input("preferred_time", f"I need a time that starts a slot, like {example}.")
+        problem = slot_problem(shop, dt)
         if problem is None:
-            fields = req.model_dump(exclude={"preferred_date", "preferred_time"})
+            fields = req.model_dump(exclude={"preferred_date", "preferred_time", "shop_id"})
             try:
-                appt = store.book_appointment(
-                    settings.shop_id, dt.replace(minute=0, second=0, microsecond=0), BAYS_PER_SLOT, **fields
-                )
+                appt = store.book_appointment(shop.shop_id, shop.slot_start(dt), shop.bays_per_slot, **fields)
             except SlotFull:
                 problem = "That slot is full."
         if problem:
@@ -601,7 +622,7 @@ def create_app() -> FastAPI:
                 "ok": True,
                 "booked": False,
                 "message": problem,
-                "alternatives": next_slots(max(dt, datetime.now(settings.shop_tz))),
+                "alternatives": next_slots(shop, max(dt, datetime.now(shop.tz))),
             }
         return {
             "ok": True,
@@ -613,17 +634,20 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/check_repair_status", dependencies=[Depends(check_secret)])
     def check_repair_status(req: RepairStatus):
+        shop = resolve_shop(req.shop_id)
+        if shop is None:
+            return UNKNOWN_SHOP
         last_name = (req.last_name or "").strip()
         phone = (req.phone or "").strip()
         ro = (req.ro_number or "").strip()
         if not last_name or not (phone or ro):
-            store.record_audit(settings.shop_id, "repair_status.lookup", outcome="needs_info")
+            store.record_audit(shop.shop_id, "repair_status.lookup", outcome="needs_info")
             return REPAIR_STATUS_NEEDS
 
         names = {normalize_name(last_name), normalize_name(last_name.split()[-1])}
         phone_digits = re.sub(r"\D", "", phone)
         hits = []
-        for record in store.list_repair_orders(settings.shop_id):
+        for record in store.list_repair_orders(shop.shop_id):
             customer_tokens = record["customer_name"].split()
             if not customer_tokens or normalize_name(customer_tokens[-1]) not in names:
                 continue
@@ -633,10 +657,10 @@ def create_app() -> FastAPI:
                 continue
             hits.append(record)
         if len(hits) != 1:
-            store.record_audit(settings.shop_id, "repair_status.lookup", outcome="failed")
+            store.record_audit(shop.shop_id, "repair_status.lookup", outcome="failed")
             return REPAIR_STATUS_FAILURE
         r = hits[0]
-        store.record_audit(settings.shop_id, "repair_status.lookup", r["public_id"], outcome="verified")
+        store.record_audit(shop.shop_id, "repair_status.lookup", r["public_id"], outcome="verified")
         return {
             "ok": True,
             "found": True,
@@ -651,9 +675,12 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/request_tow", dependencies=[Depends(check_secret)])
     def request_tow(req: TowRequest):
-        fields = req.model_dump()
-        fields["destination"] = req.destination or settings.shop_name
-        tow = store.create_tow(settings.shop_id, **fields, status="dispatch_requested")
+        shop = resolve_shop(req.shop_id)
+        if shop is None:
+            return UNKNOWN_SHOP
+        fields = req.model_dump(exclude={"shop_id"})
+        fields["destination"] = req.destination or shop.name
+        tow = store.create_tow(shop.shop_id, **fields, status="dispatch_requested")
         msg = "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
         if not req.is_safe:
             msg = "Caller may be unsafe: tell them to call 911 now if anyone is hurt or they're in traffic. " + msg
@@ -661,7 +688,10 @@ def create_app() -> FastAPI:
 
     @app.post("/tools/take_message", dependencies=[Depends(check_secret)])
     def take_message(req: TakeMessage):
-        m = store.create_message(settings.shop_id, **req.model_dump())
+        shop = resolve_shop(req.shop_id)
+        if shop is None:
+            return UNKNOWN_SHOP
+        m = store.create_message(shop.shop_id, **req.model_dump(exclude={"shop_id"}))
         lang = {
             "ht": " A Creole-speaking team member will call back.",
             "es": " Alguien que habla español le llamará.",
@@ -677,15 +707,18 @@ def create_app() -> FastAPI:
     def admin(shop: str | None = None):
         """Live board for the requested shop."""
         shop = settings.shop_id if shop is None else shop
-        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", shop):
+        if not re.fullmatch(SHOP_ID_PATTERN, shop):
             raise HTTPException(status_code=400, detail="invalid shop")
+        if shop not in shops:
+            raise HTTPException(status_code=404, detail="unknown shop")
+        config = shops[shop]
         db = store.board(shop, 50)
 
         def display(value):
             if value is None:
                 return ""
             if isinstance(value, datetime):
-                return value.astimezone(settings.shop_tz).strftime("%Y-%m-%d %H:%M %Z")
+                return value.astimezone(config.tz).strftime("%Y-%m-%d %H:%M %Z")
             return str(value)
 
         def table(rows, cols):
@@ -696,10 +729,10 @@ def create_app() -> FastAPI:
             )
             return f"<table><tr>{h}</tr>{b}</table>"
 
-        return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(settings.shop_name), quote=True)} board</title>
+        return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(config.name), quote=True)} board</title>
     <style>body{{font-family:system-ui;margin:24px}}table{{border-collapse:collapse;margin-bottom:24px}}
     td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}</style></head><body>
-    <h1>{html.escape(str(settings.shop_name), quote=True)}: AI receptionist live board</h1>
+    <h1>{html.escape(str(config.name), quote=True)}: AI receptionist live board</h1>
     <h2>Appointments</h2>{table(db["appointments"], ["public_id", "slot_start", "customer_name", "phone", "vehicle", "service", "language"])}
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
     <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "vehicle", "reason", "urgency", "callback_language"])}

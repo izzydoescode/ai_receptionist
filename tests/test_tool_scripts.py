@@ -34,6 +34,17 @@ def generated_tools(tmp_path):
     return tmp_path
 
 
+def test_tool_schemas_do_not_expose_shop_id_to_the_llm(generated_tools):
+    make_tools = load_script("make_tools")
+    for name, (_description, properties, required) in make_tools.TOOLS.items():
+        assert "shop_id" not in properties
+        assert "shop_id" not in required
+        for path in (generated_tools / f"{name}.json", make_tools.TOOLS_DIR / f"{name}.json"):
+            schema = json.loads(path.read_text())["api_schema"]["request_body_schema"]
+            assert "shop_id" not in schema.get("properties", {})
+            assert "shop_id" not in schema.get("required", [])
+
+
 def test_generator_writes_four_post_schemas_with_required_fields(generated_tools):
     files = list(generated_tools.glob("*.json"))
     assert {path.stem for path in files} == set(REQUIRED)

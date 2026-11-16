@@ -22,7 +22,7 @@ def cells(*values):
 
 
 def test_exact_board_rows(make_client):
-    client = make_client(_seed=False, SHOP_TZ="America/New_York")
+    client = make_client(_seed=False)
     store = client.app.state.store
     shop = client.app.state.settings.shop_id
     appointment = store.book_appointment(shop, SLOT, 2, **APPOINTMENT, created_at=FIXED)
@@ -86,7 +86,7 @@ def test_board_newest_fifty(make_client):
 
 
 def test_board_query_isolates_shops(make_client):
-    client = make_client(_seed=False, SHOP_ID="shop-a")
+    client = make_client(_seed=False, SHOP_ID="shop-a", _shops=[{"shop_id": "shop-a"}, {"shop_id": "shop-b"}])
     store = client.app.state.store
     for shop in ("shop-a", "shop-b"):
         store.create_message(shop, **{**MESSAGE, "caller_name": shop})
@@ -108,7 +108,25 @@ def test_invalid_board_shop(client, shop):
     assert response.json() == {"detail": "invalid shop"}
 
 
-def test_board_query_still_authenticated_and_escaped(client):
+def test_board_uses_the_requested_shops_name_and_timezone(make_client):
+    west = {"shop_id": "west-shop", "name": "West Demo Shop", "timezone": "America/Los_Angeles"}
+    client = make_client(_seed=False, _shops=[{}, west])
+    client.app.state.store.create_message("west-shop", **MESSAGE, created_at=FIXED)
+    body = client.get("/admin?shop=west-shop", auth=ADMIN_AUTH).text
+    assert "<title>West Demo Shop board</title>" in body
+    assert "<td>2026-11-16 07:00 PST</td>" in body
+    assert "Vice City Auto" not in body
+
+
+def test_unknown_board_shop_is_404_after_auth(client):
+    assert client.get("/admin?shop=no-such-shop").status_code == 401
+    response = client.get("/admin?shop=no-such-shop", auth=ADMIN_AUTH)
+    assert response.status_code == 404
+    assert response.json() == {"detail": "unknown shop"}
+
+
+def test_board_query_still_authenticated_and_escaped(make_client):
+    client = make_client(_shops=[{}, {"shop_id": "other"}])
     name = "<script>alert('dummy')</script>"
     client.app.state.store.create_message("other", **{**MESSAGE, "caller_name": name})
     assert client.get("/admin?shop=other").status_code == 401
