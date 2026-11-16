@@ -1,0 +1,70 @@
+{
+  "type": "webhook",
+  "name": "request_tow",
+  "description": "Log a tow/roadside request for the dispatcher. Use for breakdowns, accidents, cars that won't start or are unsafe to drive. Ask about safety FIRST. If it returns ok=false with invalid_input, re-ask for that field. If it returns timeout or internal_error, apologize and offer to take a message.",
+  "response_timeout_secs": 10,
+  "api_schema": {
+    "url": "https://bear.example.test/tools/request_tow",
+    "method": "POST",
+    "request_headers": {
+      "Content-Type": "application/json",
+      "X-Tool-Secret": {
+        "secret_id": "YOUR-TOOL-SECRET-ID"
+      },
+      "X-Conversation-Id": {
+        "variable_name": "system__conversation_id"
+      }
+    },
+    "request_body_schema": {
+      "type": "object",
+      "description": "Arguments for request_tow",
+      "properties": {
+        "customer_name": {
+          "type": "string",
+          "description": "Caller's name"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Callback number, digits only"
+        },
+        "vehicle": {
+          "type": "string",
+          "description": "Year make model and color"
+        },
+        "pickup_location": {
+          "type": "string",
+          "description": "Exact location: address, cross streets, highway and exit, or landmark"
+        },
+        "issue": {
+          "type": "string",
+          "description": "What happened"
+        },
+        "is_safe": {
+          "type": "boolean",
+          "description": "True only if the caller confirmed they and passengers are safe and out of traffic"
+        },
+        "destination": {
+          "type": "string",
+          "description": "Where to tow it; default is our shop"
+        },
+        "language": {
+          "type": "string",
+          "description": "Language of the call: en, es, fr or ht"
+        },
+        "shop_id": {
+          "type": "string",
+          "dynamic_variable": "shop_id"
+        }
+      },
+      "required": [
+        "customer_name",
+        "phone",
+        "vehicle",
+        "pickup_location",
+        "issue",
+        "is_safe",
+        "shop_id"
+      ]
+    }
+  }
+}

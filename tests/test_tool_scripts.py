@@ -30,7 +30,8 @@ REQUIRED = {
 @pytest.fixture
 def generated_tools(tmp_path):
     # Write into tmp_path, never into the real tools/ directory.
-    load_script("make_tools").main(["https://example.test/"], out_dir=tmp_path)
+    environ = {"PUBLIC_BASE_URL": "https://example.test/"}
+    load_script("make_tools").main(out_dir=tmp_path, environ=environ)
     return tmp_path
 
 
@@ -77,28 +78,57 @@ def test_shop_id_is_bound_to_the_dynamic_variable_not_the_llm(generated_tools):
 
 
 def test_generator_defaults_to_placeholder_base_url(tmp_path):
-    load_script("make_tools").main([], out_dir=tmp_path)
+    load_script("make_tools").main(out_dir=tmp_path, environ={})
     config = json.loads((tmp_path / "take_message.json").read_text())
-    assert config["api_schema"]["url"] == "https://YOUR-NGROK-ID.ngrok-free.app/tools/take_message"
+    assert config["api_schema"]["url"] == "https://YOUR-BACKEND-HOST/tools/take_message"
+
+
+def test_generator_reads_public_base_url_from_the_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://bear.example.test")
+    load_script("make_tools").main(out_dir=tmp_path)
+    config = json.loads((tmp_path / "book_appointment.json").read_text())
+    assert config["api_schema"]["url"] == "https://bear.example.test/tools/book_appointment"
+
+
+@pytest.mark.parametrize("base", ["http://localhost:8000", "http://127.0.0.1:8000/"])
+def test_plain_http_is_allowed_only_for_local_testing(tmp_path, base):
+    load_script("make_tools").main(out_dir=tmp_path, environ={"PUBLIC_BASE_URL": base})
+    url = json.loads((tmp_path / "take_message.json").read_text())["api_schema"]["url"]
+    assert url == base.rstrip("/") + "/tools/take_message"
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "http://bear.example.test",
+        "ftp://bear.example.test",
+        "bear.example.test",
+        "https://",
+        "https://bear.example.test/api",
+        "https://bear.example.test?x=1",
+        "https://user:pw@bear.example.test",
+    ],
+)
+def test_bad_public_base_url_is_rejected_without_writing(tmp_path, base):
+    with pytest.raises(SystemExit, match="PUBLIC_BASE_URL"):
+        load_script("make_tools").main(out_dir=tmp_path, environ={"PUBLIC_BASE_URL": base})
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_committed_tool_json_matches_generator_output(tmp_path):
     make_tools = load_script("make_tools")
-    make_tools.main([], out_dir=tmp_path)
+    make_tools.main(out_dir=tmp_path, environ={})
     for name in REQUIRED:
         committed = json.loads((make_tools.TOOLS_DIR / f"{name}.json").read_text())
         assert committed == json.loads((tmp_path / f"{name}.json").read_text())
 
 
-def test_api_creator_requires_api_key(generated_tools, monkeypatch):
-    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
-    with pytest.raises(SystemExit):
-        load_script("create_tools_via_api").main(tools_dir=generated_tools)
+DUMMY_KEY = "dummy-elevenlabs-key-for-tests"
+UPLOAD_ENV = {"ELEVENLABS_API_KEY": DUMMY_KEY, "ELEVENLABS_TOOL_SECRET_ID": "sec_demo123"}
 
 
-def test_api_creator_posts_each_generated_config_with_dummy_key(generated_tools, monkeypatch):
-    dummy_key = "dummy-elevenlabs-key-for-tests"
-    monkeypatch.setenv("ELEVENLABS_API_KEY", dummy_key)
+@pytest.fixture
+def fake_api(monkeypatch):
     requests = []
 
     def fake_urlopen(request, timeout=None):
@@ -106,7 +136,22 @@ def test_api_creator_posts_each_generated_config_with_dummy_key(generated_tools,
         return io.BytesIO(b'{"id": "tool_x"}')
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-    ids = load_script("create_tools_via_api").main(tools_dir=generated_tools)
+    return requests
+
+
+def upload(directory, environ):
+    return load_script("create_tools_via_api").main(tools_dir=directory, environ=environ)
+
+
+def test_api_creator_requires_api_key(generated_tools, fake_api):
+    with pytest.raises(SystemExit, match="ELEVENLABS_API_KEY"):
+        upload(generated_tools, {"ELEVENLABS_TOOL_SECRET_ID": "sec_demo123"})
+    assert fake_api == []
+
+
+def test_api_creator_posts_each_generated_config_with_dummy_key(generated_tools, fake_api):
+    requests = fake_api
+    ids = upload(generated_tools, UPLOAD_ENV)
     assert ids == ["tool_x"] * 4
     assert len(requests) == 4
     configs = {json.loads(request.data)["tool_config"]["name"]: request for request in requests}
@@ -114,8 +159,108 @@ def test_api_creator_posts_each_generated_config_with_dummy_key(generated_tools,
     for name, request in configs.items():
         assert request.full_url == "https://api.elevenlabs.io/v1/convai/tools"
         assert request.get_method() == "POST"
-        assert {key.lower(): value for key, value in request.header_items()}["xi-api-key"] == dummy_key
-        assert json.loads(request.data) == {"tool_config": json.loads((generated_tools / f"{name}.json").read_text())}
+        assert {key.lower(): value for key, value in request.header_items()}["xi-api-key"] == DUMMY_KEY
+        expected = json.loads((generated_tools / f"{name}.json").read_text())
+        expected["api_schema"]["request_headers"]["X-Tool-Secret"] = {"secret_id": "sec_demo123"}
+        assert json.loads(request.data) == {"tool_config": expected}
+
+
+def headers_of(directory, name="take_message"):
+    return json.loads((directory / f"{name}.json").read_text())["api_schema"]["request_headers"]
+
+
+def test_files_on_disk_only_ever_hold_a_placeholder_secret_reference(tmp_path):
+    # Even with the real values in the environment, nothing secret-related is written to disk.
+    environ = {"PUBLIC_BASE_URL": "https://example.test", "TOOL_SECRET": "z" * 40, "ELEVENLABS_TOOL_SECRET_ID": "sec_x"}
+    load_script("make_tools").main(out_dir=tmp_path, environ=environ)
+    for path in tmp_path.glob("*.json"):
+        assert headers_of(tmp_path, path.stem)["X-Tool-Secret"] == {"secret_id": "YOUR-TOOL-SECRET-ID"}
+        assert "z" * 40 not in path.read_text()
+        assert "sec_x" not in path.read_text()
+
+
+def test_upload_leaves_the_files_on_disk_untouched(generated_tools, fake_api):
+    before = {path.name: path.read_text() for path in generated_tools.glob("*.json")}
+    upload(generated_tools, UPLOAD_ENV)
+    assert {path.name: path.read_text() for path in generated_tools.glob("*.json")} == before
+
+
+@pytest.mark.parametrize("secret_id", [None, "", "has space", "a/b", "x" * 129, '"quoted"', "z" * 40])
+def test_upload_refuses_a_missing_malformed_or_secret_value_id(generated_tools, fake_api, secret_id):
+    environ = {"ELEVENLABS_API_KEY": DUMMY_KEY, "TOOL_SECRET": "z" * 40}
+    if secret_id is not None:
+        environ["ELEVENLABS_TOOL_SECRET_ID"] = secret_id
+    with pytest.raises(SystemExit, match="ELEVENLABS_TOOL_SECRET_ID"):
+        upload(generated_tools, environ)
+    assert fake_api == []
+
+
+def test_tools_send_the_conversation_id_header_from_a_system_variable(generated_tools):
+    # The backend logs X-Conversation-Id (Task 4); ElevenLabs fills it per call.
+    for path in generated_tools.glob("*.json"):
+        assert headers_of(generated_tools, path.stem)["X-Conversation-Id"] == {
+            "variable_name": "system__conversation_id"
+        }
+
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures/tools"
+FIXTURE_ENV = {"PUBLIC_BASE_URL": "https://bear.example.test"}
+
+
+def test_generated_json_matches_the_fixture_exactly(tmp_path):
+    import difflib
+
+    load_script("make_tools").main(out_dir=tmp_path, environ=FIXTURE_ENV)
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(p.name for p in FIXTURES.iterdir())
+    for fixture in FIXTURES.glob("*.json"):
+        expected = fixture.read_text("utf-8").splitlines()
+        actual = (tmp_path / fixture.name).read_text("utf-8").splitlines()
+        assert actual == expected, "\n".join(
+            difflib.unified_diff(expected, actual, "fixture", "generated", lineterm="")
+        )
+
+
+@pytest.mark.parametrize("directory", [FIXTURES, TOOLS_SRC])
+def test_tool_json_round_trips(directory):
+    for path in directory.glob("*.json"):
+        text = path.read_text("utf-8")
+        assert json.dumps(json.loads(text), indent=2, ensure_ascii=False) == text
+
+
+def test_api_creator_refuses_configs_with_a_placeholder_base_url(tmp_path, fake_api):
+    load_script("make_tools").main(out_dir=tmp_path, environ={})
+    with pytest.raises(SystemExit, match="placeholder"):
+        upload(tmp_path, UPLOAD_ENV)
+    assert fake_api == []
+
+
+def test_api_creator_prints_http_detail_and_created_ids_without_the_key(generated_tools, monkeypatch, capsys):
+    import urllib.error
+
+    calls = {"n": 0}
+
+    def fake_urlopen(request, timeout=None):
+        calls["n"] += 1
+        if calls["n"] >= 3:
+            raise urllib.error.HTTPError(
+                request.full_url,
+                422,
+                "Unprocessable Entity",
+                hdrs=None,
+                fp=io.BytesIO(b'{"detail": "request_headers.X-Tool-Secret is invalid"}'),
+            )
+        return io.BytesIO(b'{"id": "tool_created_%d"}' % calls["n"])
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(SystemExit, match="422"):
+        upload(generated_tools, UPLOAD_ENV)
+    out = capsys.readouterr()
+    text = out.out + out.err
+    assert "422" in text
+    assert "request_headers.X-Tool-Secret is invalid" in text
+    assert "tool_created_1" in text
+    assert "tool_created_2" in text
+    assert DUMMY_KEY not in text
 
 
 def test_tool_descriptions_explain_ok_false():

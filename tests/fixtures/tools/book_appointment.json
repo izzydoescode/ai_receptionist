@@ -1,0 +1,70 @@
+{
+  "type": "webhook",
+  "name": "book_appointment",
+  "description": "Book a drop-off appointment at the shop. Call ONLY after you have collected and read back name, phone, vehicle, service, date and time. If it returns booked=false, offer the alternatives it gives. If it returns ok=false with invalid_input, re-ask for that field. If it returns timeout or internal_error, apologize and offer to take a message.",
+  "response_timeout_secs": 10,
+  "api_schema": {
+    "url": "https://bear.example.test/tools/book_appointment",
+    "method": "POST",
+    "request_headers": {
+      "Content-Type": "application/json",
+      "X-Tool-Secret": {
+        "secret_id": "YOUR-TOOL-SECRET-ID"
+      },
+      "X-Conversation-Id": {
+        "variable_name": "system__conversation_id"
+      }
+    },
+    "request_body_schema": {
+      "type": "object",
+      "description": "Arguments for book_appointment",
+      "properties": {
+        "customer_name": {
+          "type": "string",
+          "description": "Caller's full name"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Callback phone number, digits only with area code. Default to the caller ID if they confirm it."
+        },
+        "vehicle": {
+          "type": "string",
+          "description": "Year, make and model, e.g. 2017 Chevy Malibu"
+        },
+        "service": {
+          "type": "string",
+          "description": "What they need: oil change, brakes, A/C, check engine light, collision/body estimate, tires, etc."
+        },
+        "preferred_date": {
+          "type": "string",
+          "description": "Date in YYYY-MM-DD. Resolve words like 'tomorrow' using the current date in the system prompt."
+        },
+        "preferred_time": {
+          "type": "string",
+          "description": "Time in 24h HH:MM shop local time, e.g. 09:00 or 14:30"
+        },
+        "language": {
+          "type": "string",
+          "description": "Language of the call: en, es, fr or ht"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Anything else useful: symptoms, insurance claim, needs a ride, etc."
+        },
+        "shop_id": {
+          "type": "string",
+          "dynamic_variable": "shop_id"
+        }
+      },
+      "required": [
+        "customer_name",
+        "phone",
+        "vehicle",
+        "service",
+        "preferred_date",
+        "preferred_time",
+        "shop_id"
+      ]
+    }
+  }
+}

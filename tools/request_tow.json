@@ -4,10 +4,16 @@
   "description": "Log a tow/roadside request for the dispatcher. Use for breakdowns, accidents, cars that won't start or are unsafe to drive. Ask about safety FIRST. If it returns ok=false with invalid_input, re-ask for that field. If it returns timeout or internal_error, apologize and offer to take a message.",
   "response_timeout_secs": 10,
   "api_schema": {
-    "url": "https://YOUR-NGROK-ID.ngrok-free.app/tools/request_tow",
+    "url": "https://YOUR-BACKEND-HOST/tools/request_tow",
     "method": "POST",
     "request_headers": {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "X-Tool-Secret": {
+        "secret_id": "YOUR-TOOL-SECRET-ID"
+      },
+      "X-Conversation-Id": {
+        "variable_name": "system__conversation_id"
+      }
     },
     "request_body_schema": {
       "type": "object",

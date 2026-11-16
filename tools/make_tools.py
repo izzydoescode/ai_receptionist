@@ -1,14 +1,30 @@
 """Writes ElevenLabs webhook tool configs to tools/*.json.
-Usage: python tools/make_tools.py https://YOUR-ID.ngrok-free.app
+Usage: PUBLIC_BASE_URL=https://your-backend.example python tools/make_tools.py
 Each file is a valid `tool_config` for POST /v1/convai/tools (or `elevenlabs tools add --config-path`).
+See tools/README.md for the manual steps.
 """
 
 import json
-import sys
+import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 TOOLS_DIR = Path(__file__).resolve().parent
-DEFAULT_BASE = "https://YOUR-NGROK-ID.ngrok-free.app"
+DEFAULT_BASE = "https://YOUR-BACKEND-HOST"
+LOCAL_HOSTS = {"localhost", "127.0.0.1"}
+
+
+def public_base_url(environ):
+    """Validated PUBLIC_BASE_URL without a trailing slash: https, or http only for a local host."""
+    base = (environ.get("PUBLIC_BASE_URL") or DEFAULT_BASE).rstrip("/")
+    parts = urlsplit(base)
+    secure = parts.scheme == "https" or (parts.scheme == "http" and parts.hostname in LOCAL_HOSTS)
+    if not secure or not parts.hostname or parts.path or parts.query or parts.fragment or parts.username:
+        raise SystemExit(
+            "PUBLIC_BASE_URL must be an https:// origin like https://bear.example.com "
+            "(no path, query or credentials; http:// only for localhost)"
+        )
+    return base
 
 
 def S(d):
@@ -98,9 +114,18 @@ TOOLS = {
 }
 
 
-def main(argv=None, out_dir=None):
+def main(out_dir=None, environ=None):
     out = Path(out_dir) if out_dir is not None else TOOLS_DIR
-    base = (argv[0] if argv else DEFAULT_BASE).rstrip("/")
+    environ = os.environ if environ is None else environ
+    base = public_base_url(environ)
+    headers = {
+        "Content-Type": "application/json",
+        # Always a placeholder on disk: the dashboard picks the secret from a list, and
+        # create_tools_via_api.py fills in the real id in memory at upload time.
+        "X-Tool-Secret": {"secret_id": "YOUR-TOOL-SECRET-ID"},
+        # Lets request logs tie each tool call to its ElevenLabs conversation.
+        "X-Conversation-Id": {"variable_name": "system__conversation_id"},
+    }
     paths = []
     for name, (desc, props, req) in TOOLS.items():
         cfg = {
@@ -111,7 +136,7 @@ def main(argv=None, out_dir=None):
             "api_schema": {
                 "url": f"{base}/tools/{name}",
                 "method": "POST",
-                "request_headers": {"Content-Type": "application/json"},
+                "request_headers": headers,
                 "request_body_schema": {
                     "type": "object",
                     "description": f"Arguments for {name}",
@@ -131,4 +156,4 @@ def main(argv=None, out_dir=None):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main()

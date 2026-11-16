@@ -18,6 +18,7 @@ SHOP_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
 UNKNOWN_SHOP_ID = "unknown"
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 # Fla. Stat. 934.03 needs every party's consent, so each greeting must say the call may be recorded.
+LANGUAGE_NAMES = {"en": "English", "es": "Spanish", "fr": "French"}
 RECORDING_NOTICES = {
     "en": ("may be recorded",),
     "es": ("puede ser grabada", "pueden ser grabadas", "se puede grabar"),
@@ -237,6 +238,10 @@ class ShopConfig(_Frozen):
             listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
             text += f" Closed for holidays on {listed}."
         return text
+
+    def languages_text(self) -> str:
+        names = [LANGUAGE_NAMES[lang] for lang in self.languages]
+        return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
     def services_text(self) -> str:
         return ", ".join(self.services)

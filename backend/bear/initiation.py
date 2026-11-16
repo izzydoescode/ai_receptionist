@@ -7,8 +7,9 @@ conversation_initiation_client_data with dynamic_variables and conversation_conf
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import datetime
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -44,6 +45,15 @@ class DynamicVariables(_Strict):
     services_text: str
     persona_name: str
     features_text: str
+    shop_timezone: str
+    languages_text: str
+    # Shop-local time when the call started. Used instead of {{system__time}}, which follows the
+    # agent's single configured time zone and changes every turn (it also defeats prompt caching).
+    call_start_local: str
+
+
+def local_time_text(now: datetime) -> str:
+    return now.strftime("%A, %B %d, %Y, %I:%M %p")
 
 
 class AgentOverride(_Strict):
@@ -66,19 +76,23 @@ class InitResponse(_Strict):
     conversation_config_override: ConfigOverride
 
 
-def shop_initiation(shop: ShopConfig, today: date) -> InitResponse:
+def shop_initiation(shop: ShopConfig, now: datetime) -> InitResponse:
     """Greeting, voice and prompt variables for a call to ``shop``'s number, in its primary language."""
     language = shop.languages[0]
+    now = now.astimezone(shop.tz)
     return InitResponse(
         dynamic_variables=DynamicVariables(
             shop_id=shop.shop_id,
             shop_name=shop.name,
             shop_city=shop.city,
             shop_address=shop.address,
-            hours_text=shop.hours_text(today),
+            hours_text=shop.hours_text(now.date()),
             services_text=shop.services_text(),
             persona_name=shop.persona.name,
             features_text=shop.features_text(),
+            shop_timezone=shop.timezone,
+            languages_text=shop.languages_text(),
+            call_start_local=local_time_text(now),
         ),
         conversation_config_override=ConfigOverride(
             agent=AgentOverride(first_message=shop.first_messages[language], language=language),
@@ -87,8 +101,11 @@ def shop_initiation(shop: ShopConfig, today: date) -> InitResponse:
     )
 
 
-def unknown_initiation() -> InitResponse:
-    """Safe, shop-neutral greeting for a number no shop owns. Tools only take messages in this state."""
+def unknown_initiation(now: datetime, timezone: ZoneInfo) -> InitResponse:
+    """Safe, shop-neutral greeting for a number no shop owns. Tools only take messages in this state.
+
+    ``timezone`` is the default shop's, so the message board and the agent agree on local time.
+    """
     return InitResponse(
         dynamic_variables=DynamicVariables(
             shop_id=UNKNOWN_SHOP_ID,
@@ -102,6 +119,9 @@ def unknown_initiation() -> InitResponse:
                 "This line can only take a message. Do not book appointments, check repair status or log tows; "
                 "take a message with take_message so someone can call back."
             ),
+            shop_timezone=str(timezone),
+            languages_text="English",
+            call_start_local=local_time_text(now.astimezone(timezone)),
         ),
         # No voice override: the agent's default voice is used.
         conversation_config_override=ConfigOverride(
