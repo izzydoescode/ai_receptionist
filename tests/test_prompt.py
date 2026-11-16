@@ -35,6 +35,7 @@ def test_prompt_has_no_hard_coded_hours(pattern):
         "shop_timezone",
         "languages_text",
         "call_start_local",
+        "callback_text",
     ],
 )
 def test_prompt_uses_shop_dynamic_variables(variable):
@@ -59,14 +60,14 @@ TOW_PROMISES = ["15 minutes", "dispatcher will call", "dispatch calls back"]
 NEVER = ["24/7", "calendar works"]
 
 
-def rendered_prompt(features):
+def rendered_prompt(features, callback_languages=("en",)):
     from datetime import UTC, datetime
 
     from bear.initiation import shop_initiation
     from bear.shops import ShopConfig
     from test_shop_config import config
 
-    shop = ShopConfig.model_validate(config(features=features))
+    shop = ShopConfig.model_validate(config(features=features, callback_languages=list(callback_languages)))
     variables = shop_initiation(shop, datetime(2026, 12, 1, 15, tzinfo=UTC)).dynamic_variables.model_dump()
     text = PROMPT
     for name, value in variables.items():
@@ -128,6 +129,51 @@ def test_prompt_repeats_the_recording_notice_on_the_first_language_switch():
 
 def test_french_first_message_is_french_only():
     assert first_messages_in_prompt()["fr"] == (
-        "Bonjour, vous êtes bien chez {{shop_name}}. Je suis {{persona_name}}, l'assistant virtuel. "
-        "L'appel peut être enregistré. Comment puis-je vous aider ?"
+        "Bonjour, vous êtes bien chez {{shop_name}}, je suis {{persona_name}}, l'assistant virtuel du garage. "
+        "Juste pour vous le dire, l'appel peut être enregistré. Comment puis-je vous aider ?"
     )
+
+
+AI_DISCLOSURES = {
+    "en": "ai assistant",
+    "es": "asistente virtual",
+    "fr": "assistant virtuel",
+    "ht": "asistan vityèl",
+}
+
+
+@pytest.mark.parametrize("language", sorted(NOTICES))
+def test_prompt_first_message_says_up_front_that_bear_is_ai(language):
+    message = first_messages_in_prompt()[language].lower()
+    question = min(i for i in (message.find("?"), message.find("¿")) if i >= 0)
+    assert 0 <= message.find(AI_DISCLOSURES[language]) < question
+
+
+def test_prompt_never_poses_as_human_and_answers_truthfully_if_asked():
+    text = PROMPT.lower()
+    assert "never claim or imply that you're a human" in text
+    assert "friendly human" not in text
+    assert "real person" in text
+    assert "bot" in text
+    assert "ai assistant" in text
+    assert "keep helping" in text
+    assert "casual" in text
+    assert "contractions" in text
+
+
+CREOLE_CALLBACK_PROMISE = "ki pale kreyòl ap rele w tounen"
+
+
+def test_static_prompt_never_promises_a_creole_callback():
+    assert CREOLE_CALLBACK_PROMISE not in PROMPT.lower()
+
+
+def test_creole_callback_is_not_promised_when_unstaffed():
+    text = rendered_prompt(ALL_OFF, ["en", "es"])
+    assert CREOLE_CALLBACK_PROMISE not in text
+    assert "garaj la ap rele w tounen" in text
+    assert "staff can call back in english and spanish." in text
+
+
+def test_creole_callback_is_promised_when_staffed():
+    assert CREOLE_CALLBACK_PROMISE in rendered_prompt(ALL_OFF, ["en", "ht"])

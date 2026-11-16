@@ -60,10 +60,10 @@ def test_split_day_uses_each_interval_grid():
 @pytest.mark.parametrize(
     "when,message",
     [
-        (at(4, 10), "We're closed that day for a holiday."),
-        (at(6, 10), "We're closed Sundays."),
-        (at(0, 7), "That day we take drop-offs from 8:00 AM to 6:00 PM."),
-        (at(5, 15), "That day we take drop-offs from 9:00 AM to 2:00 PM."),
+        (at(4, 10), "We're closed that day for a holiday, but I can look at another day for you."),
+        (at(6, 10), "We're closed Sundays, but I can look at another day for you."),
+        (at(0, 7), "We're not open at that time. That day we take drop-offs from 8:00 AM to 6:00 PM."),
+        (at(5, 15), "We're not open at that time. That day we take drop-offs from 9:00 AM to 2:00 PM."),
         (at(0, 10), None),
     ],
 )
@@ -74,7 +74,7 @@ def test_closed_reason_is_speakable(when, message):
 def test_closed_reason_lists_split_hours():
     custom = shop(hours__monday=[{"open": "08:00", "close": "12:00"}, {"open": "13:30", "close": "17:00"}])
     assert custom.closed_reason(at(0, 12, 30)) == (
-        "That day we take drop-offs from 8:00 AM to 12:00 PM or from 1:30 PM to 5:00 PM."
+        "We're not open at that time. That day we take drop-offs from 8:00 AM to 12:00 PM or from 1:30 PM to 5:00 PM."
     )
 
 

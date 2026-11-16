@@ -1,0 +1,12 @@
+{
+  "type": "post_call_audio",
+  "event_timestamp": 1739537319,
+  "data": {
+    "agent_id": "agent_demo",
+    "conversation_id": "conv_demo0001",
+    "branch_id": "agtbrch_demo",
+    "version_id": "agtvrsn_demo",
+    "environment": "production",
+    "full_audio": "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA"
+  }
+}

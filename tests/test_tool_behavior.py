@@ -55,7 +55,7 @@ def test_third_booking_in_same_hour_is_full_with_three_alternatives(client, payl
     assert post(client, tool_headers, "book_appointment", payload)["booked"] is True
     result = post(client, tool_headers, "book_appointment", payload)
     assert result["booked"] is False
-    assert result["message"] == "That slot is full."
+    assert result["message"] == "That time's already booked up. I can offer a few other times that are open."
     assert len(result["alternatives"]) == 3
 
 
@@ -101,7 +101,8 @@ BANNED_WHEN_OFF = ["15 minutes", "dispatcher", "text photos", "24/7"]
 def test_tow_without_dispatch_promises_only_a_callback(client, payloads, tool_headers):
     message = post(client, tool_headers, "request_tow", payloads["request_tow"])["message"]
     assert message == (
-        "Tow request logged. Tell the caller: \"I've logged it and the shop will call you back as soon as possible. "
+        "I've gone ahead and logged the tow. Tell the caller: "
+        "\"I've logged the tow, and the shop will call you back as soon as possible. "
         "If you're unsafe, call 911.\""
     )
     for phrase in BANNED_WHEN_OFF:
@@ -111,7 +112,10 @@ def test_tow_without_dispatch_promises_only_a_callback(client, payloads, tool_he
 def test_tow_with_dispatch_promises_the_dispatcher(make_client, payloads, tool_headers):
     client = make_client(_shops=[{"features": TOW_ON}])
     message = post(client, tool_headers, "request_tow", payloads["request_tow"])["message"]
-    assert message == "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
+    assert (
+        message
+        == "I've gone ahead and logged the tow. A dispatcher will call you back within 15 minutes with an arrival time."
+    )
 
 
 def test_unsafe_tow_without_dispatch_keeps_the_911_warning_first(client, payloads, tool_headers):
@@ -123,23 +127,61 @@ def test_unsafe_tow_without_dispatch_keeps_the_911_warning_first(client, payload
 @pytest.mark.parametrize("shop_id", ["vice-city-auto", "unknown"])
 def test_message_reply_promises_only_a_callback(client, payloads, tool_headers, shop_id):
     message = post(client, tool_headers, "take_message", {**payloads["take_message"], "shop_id": shop_id})["message"]
-    assert message.startswith("Message saved for the service writer. The shop will call back as soon as possible.")
+    assert message.startswith(
+        "I've gone ahead and saved your message for the service writer. The shop will call you back as soon as possible."
+    )
     for phrase in BANNED_WHEN_OFF:
         assert phrase not in message
 
 
-@pytest.mark.parametrize(
-    "language,sentence",
-    [
-        ("es", "Alguien que habla español le llamará."),
-        ("ht", "A Creole-speaking team member will call back."),
-    ],
-)
-def test_message_ticket_and_requested_callback_language(client, payloads, tool_headers, language, sentence):
-    result = post(client, tool_headers, "take_message", {**payloads["take_message"], "callback_language": language})
+STAFFED_SENTENCES = {
+    "es": "Alguien que habla español le devolverá la llamada.",
+    "fr": "Quelqu'un qui parle français vous rappellera.",
+    "ht": "Yon moun ki pale Kreyòl ap rele w tounen.",
+}
+LANGUAGE_NAMES = {"es": "Spanish", "fr": "French", "ht": "Haitian Creole"}
+
+
+def leave_message(client, tool_headers, payloads, language, shop_id="vice-city-auto"):
+    payload = {**payloads["take_message"], "callback_language": language, "shop_id": shop_id}
+    result = post(client, tool_headers, "take_message", payload)
     assert result["saved"] is True
     assert result["ticket"].startswith("M")
-    assert sentence in result["message"]
+    return result["message"]
+
+
+@pytest.mark.parametrize("language", sorted(STAFFED_SENTENCES))
+def test_message_promises_a_callback_in_a_staffed_language(make_client, payloads, tool_headers, language):
+    client = make_client(_shops=[{"callback_languages": ["en", "es", "fr", "ht"]}])
+    assert STAFFED_SENTENCES[language] in leave_message(client, tool_headers, payloads, language)
+
+
+@pytest.mark.parametrize("language", sorted(STAFFED_SENTENCES))
+def test_message_never_promises_an_unstaffed_language(make_client, payloads, tool_headers, language):
+    client = make_client(_shops=[{"callback_languages": ["en"]}])
+    message = leave_message(client, tool_headers, payloads, language)
+    assert STAFFED_SENTENCES[language] not in message
+    assert f"Don't promise a {LANGUAGE_NAMES[language]}-speaking callback" in message
+    assert "The shop will call you back as soon as possible." in message
+
+
+def test_demo_shop_promises_spanish_but_not_creole(client, payloads, tool_headers):
+    assert STAFFED_SENTENCES["es"] in leave_message(client, tool_headers, payloads, "es")
+    assert STAFFED_SENTENCES["ht"] not in leave_message(client, tool_headers, payloads, "ht")
+
+
+@pytest.mark.parametrize("language", sorted(STAFFED_SENTENCES))
+def test_unknown_line_promises_no_language_callback(client, payloads, tool_headers, language):
+    message = leave_message(client, tool_headers, payloads, language, shop_id="unknown")
+    assert STAFFED_SENTENCES[language] not in message
+
+
+def test_english_callback_adds_nothing(client, payloads, tool_headers):
+    message = leave_message(client, tool_headers, payloads, "en")
+    assert (
+        message
+        == "I've gone ahead and saved your message for the service writer. The shop will call you back as soon as possible."
+    )
 
 
 def test_take_message_persists_vehicle_and_shows_it_on_the_board(client, payloads, tool_headers):
@@ -192,10 +234,10 @@ def test_booking_follows_configured_hours_slot_size_and_bays(make_client, payloa
     (appointment,) = rows(client, "appointments")
     assert appointment["slot_start"].astimezone(ZoneInfo("America/New_York")).strftime("%H:%M") == "10:00"
     result = post(client, tool_headers, "book_appointment", payload)
-    assert result["message"] == "That slot is full."
+    assert result["message"] == "That time's already booked up. I can offer a few other times that are open."
     assert [a.split(" at ")[1] for a in result["alternatives"]] == ["10:30 AM", "11:00 AM", "11:30 AM"]
     closed = post(client, tool_headers, "book_appointment", {**payload, "preferred_time": "12:00"})
-    assert closed["message"] == "That day we take drop-offs from 10:00 AM to 12:00 PM."
+    assert closed["message"] == "We're not open at that time. That day we take drop-offs from 10:00 AM to 12:00 PM."
 
 
 def test_booking_on_a_holiday_is_refused_and_skipped(make_client, payloads, tool_headers):
@@ -203,6 +245,6 @@ def test_booking_on_a_holiday_is_refused_and_skipped(make_client, payloads, tool
     client = make_client(_shops=[{"holidays": [monday.isoformat()]}])
     result = post(client, tool_headers, "book_appointment", payloads["book_appointment"])
     assert result["booked"] is False
-    assert result["message"] == "We're closed that day for a holiday."
+    assert result["message"] == "We're closed that day for a holiday, but I can look at another day for you."
     assert result["alternatives"][0].startswith("Tuesday")
     assert rows(client, "appointments") == []

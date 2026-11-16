@@ -34,20 +34,39 @@ FORBIDDEN = (
     "Basic WRONG-AUTH-VALUE",
     "Basic " + base64.b64encode(":".join(ADMIN_AUTH).encode()).decode(),
 )
+# Staff alerts may include the name and event details; they still must not
+# log a full phone number, a secret, or a transcript.
+ALERT_ALLOWED = {
+    "Zelda Quixote",
+    "Quixote",
+    "1999 Secret Wagon",
+    "123 Hidden Street",
+    "PRIVATE-ISSUE-TEXT",
+    "PRIVATE-REASON-TEXT",
+    "PRIVATE-NOTES-TEXT",
+}
 
 
 def assert_private(caplog):
     # httpx records are TestClient's own client-side request lines, not app logs.
-    texts = []
     for record in caplog.records:
         if record.name.startswith("httpx"):
             continue
-        texts.append(logging.Formatter("%(name)s %(message)s").format(record))
-        texts.extend((record.getMessage(), repr(record.args), record.exc_text or ""))
+        chunk = [
+            logging.Formatter("%(name)s %(message)s").format(record),
+            record.getMessage(),
+            repr(record.args),
+            record.exc_text or "",
+        ]
         if record.exc_info:
-            texts.append(str(record.exc_info[1]))
-    for value in FORBIDDEN:
-        assert all(value not in text for text in texts), f"log leaked {value!r}"
+            chunk.append(str(record.exc_info[1]))
+        forbidden = (
+            FORBIDDEN
+            if not record.name.startswith("bear.alerts")
+            else tuple(value for value in FORBIDDEN if value not in ALERT_ALLOWED)
+        )
+        for value in forbidden:
+            assert all(value not in text for text in chunk), f"log leaked {value!r}"
 
 
 def request_record(caplog, response, method, path, tool=None):
@@ -290,7 +309,7 @@ def test_unhandled_error_is_safe(client, payloads, tool_headers, monkeypatch, ca
     assert response.json() == {
         "ok": False,
         "error": "internal_error",
-        "message": "Sorry, something went wrong on our end. Let me take a message.",
+        "message": "Sorry about that. Something went wrong on our end. Let me take a message so someone can call you back.",
     }
     assert_private(caplog)
     entry = request_record(caplog, response, "POST", "/tools/take_message", "take_message")

@@ -1,0 +1,17 @@
+name: en_message
+language: en
+description: Caller leaves a message for the service writer.
+calls:
+  - tool: take_message
+    args:
+      caller_name: Taylor Brooks
+      phone: "3055550145"
+      reason: Wants a quote for a timing belt on a 2011 Subaru
+    expect:
+      ok: true
+      saved: true
+      message: I've gone ahead and saved your message for the service writer. The shop will call you back as soon as possible.
+db:
+  messages:
+    - {caller_name: Taylor Brooks, urgency: normal, callback_language: en}
+admin_contains: [Taylor Brooks, timing belt]

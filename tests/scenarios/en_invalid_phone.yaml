@@ -1,0 +1,11 @@
+name: en_invalid_phone
+language: en
+description: A bad phone number is rejected as invalid_input.
+calls:
+  - tool: take_message
+    args:
+      caller_name: Sam Patel
+      phone: "not-a-phone"
+      reason: Please call back
+    expect: {ok: false, error: invalid_input, field: phone}
+db_counts: {messages: 0}

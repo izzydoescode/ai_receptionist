@@ -23,3 +23,17 @@ def test_there_are_shop_files():
 def test_greeting_gives_the_recording_notice_before_the_question(file, language, message):
     question = min(i for i in (message.find("?"), message.find("¿")) if i >= 0)
     assert 0 <= fold(message).find(fold(RECORDING_NOTICES[language][0])) < question
+
+
+AI_DISCLOSURES = {
+    "en": "ai assistant",
+    "es": "asistente virtual",
+    "fr": "assistant virtuel",
+}
+
+
+@pytest.mark.parametrize("file,language,message", GREETINGS)
+def test_greeting_says_bear_is_ai_before_the_question(file, language, message):
+    lower = message.lower()
+    question = min(i for i in (lower.find("?"), lower.find("¿")) if i >= 0)
+    assert 0 <= lower.find(AI_DISCLOSURES[language]) < question

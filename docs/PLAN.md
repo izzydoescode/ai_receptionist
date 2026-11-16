@@ -210,7 +210,7 @@ Acceptance: a test checks that every `first_messages` value in each shop config 
 - *The per-feature wording lives in `features_text`: the real promise when a feature is on, and the exact fallback line when it is off. The prompt flows point at it, so a shop with features off never has "text photos", "15 minutes" or "24/7" in its rendered prompt. Tests render the prompt with the webhook's variables, once with every feature off and once with every feature on.*
 - *`request_tow` promises the 15-minute dispatcher only with `tow_dispatch`. Otherwise it relays the fallback line, with the 911 warning still first for unsafe callers. `take_message` says "the shop will call back as soon as possible", with no time promise.*
 - *Shop config validation already required each language's notice (Task 7). The new tests also check that the notice comes before the greeting's question, in `shops/*.yaml` and in the prompt's table (including the HT line, "ka anrejistre"). The demo shop's French greeting now uses the spec wording, "L'appel peut être enregistré".*
-- *Left as is and flagged in `docs/TRANSLATION_REVIEW.md`: the Kreyòl bridge line and the `take_message` replies that promise a Kreyòl- or Spanish-speaking callback. They are only true if the shop has those staff. A per-shop flag for that could come later.*
+- *Follow-up (`dev/per-shop-callback-languages`): a per-shop `callback_languages` list (default `[en]`) now gates those promises. The Kreyòl bridge line comes from the `callback_text` dynamic variable and promises a Kreyòl-speaking callback only when `ht` is listed. `take_message` promises a language callback only for a listed language.*
 
 ## Phase E: Deployment
 
@@ -239,12 +239,18 @@ Acceptance: `docker build` succeeds, `docker run` with env answers `/health`, an
 
 ## Phase F: Scripted test-call suite (EN/ES)
 
-### Task 12: Deterministic flow tests
+### Task 12: Deterministic flow tests (done on `dev/scenario-call-tests`)
 - `tests/scenarios/*.yaml`, one per flow and language: `en_status`, `es_status`, `en_book`, `es_book`, `en_book_full_slot`, `es_after_hours`, `en_tow_unsafe`, `es_tow_safe`, `en_message`, `es_message`, `en_transfer_request`, `en_unverified_status`.
 - Each scenario lists the tool calls the agent should make with their arguments, and the expected response fields.
 - A pytest runner replays them against the backend and checks responses, DB side effects and `/admin` rows.
 
 Acceptance: 12 or more scenarios pass. Each runs in under 1 s. Spanish scenarios use Spanish free-text fields and check that `language="es"` is persisted.
+
+*Decisions at implementation:*
+- *The format is documented in `tests/scenarios/README.md`. Dates are placeholders like `{next_monday}`. Rows are matched as subsets on the shop's board, audit events are checked too, and `/admin` is checked for text.*
+- *`en_transfer_request` replays the urgent `take_message` taken when a transfer fails or the shop is closed. The live transfer is an ElevenLabs system tool with no backend call.*
+- *`es_after_hours` tries Sunday, gets three alternatives, then leaves a Spanish message. `es_status` checks an accent-insensitive last-name match.*
+- *Not covered here (needs a key): whether the live agent produces these calls from speech. See Task 13.*
 
 ### Task 13: Live agent rehearsal script (manual, needs a key)
 - `scripts/rehearse.py` uses the ElevenLabs agent testing or simulated-conversation API (*endpoint names to be confirmed against current docs at implementation time*). It plays each scenario's caller lines in text mode against the real agent and asserts which tools were called. Run each scenario 3 times, because routing is probabilistic.
@@ -262,8 +268,13 @@ Do this only after the A2P 10DLC brand and campaign are approved. Until then, `f
 - Tests mock Twilio and check: no send when the flag is off, no send without consent, exactly one send on retries, and the STOP reply is honored.
 - Cost: $0.0083 per segment plus about $0.003–0.005 carrier fee. Registration is $4.50 for the brand, $15 for campaign vetting, then $1.50–2/mo (https://www.twilio.com/en-us/sms/pricing/us, https://help.twilio.com/articles/1260803965530).
 
-### Task 15 (optional): Post-call webhook ingestion
+### Task 15 (optional): Post-call webhook ingestion (done on `dev/post-call-summary`)
 - `POST /elevenlabs/post-call` verifies the ElevenLabs HMAC signature, stores the conversation id, duration, summary and outcome per shop, and shows them on `/admin`. Full transcripts and audio aren't stored by default; that follows the shop's retention choice.
+
+*Decisions at implementation:*
+- *The signature is checked without the SDK (`t=<secs>,v0=<hmac of "t.body">`): 30-minute maximum age like the SDK, plus a 5-minute future limit. The secret is `POST_CALL_WEBHOOK_SECRET`. If it's unset, the endpoint returns 503 and the app still starts; it must differ from the other secrets.*
+- *Stored per call: conversation id (unique, so retries return `duplicate`), start time, duration, outcome, summary, title and language. The shop comes from the `shop_id` dynamic variable, or `unknown`. Audio, call-initiation failures and future event types get 200 and are ignored.*
+- *A per-shop transcript retention option isn't built yet. No transcript, audio or phone number is stored; they stay in ElevenLabs under its retention settings. Fixtures follow the docs' example payloads. See `docs/ELEVENLABS_POST_CALL.md`.*
 
 ---
 

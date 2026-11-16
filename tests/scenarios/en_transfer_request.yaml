@@ -1,0 +1,17 @@
+name: en_transfer_request
+language: en
+description: >-
+  Caller asks twice for the owner. The live transfer is an ElevenLabs system tool with no backend
+  call. When it fails or the shop is closed, the agent takes an urgent message, which is what this replays.
+calls:
+  - tool: take_message
+    args:
+      caller_name: Pat Quinn
+      phone: "3055550147"
+      reason: Asked for the owner twice about a warranty dispute on a recent brake job; transfer did not connect
+      urgency: high
+    expect: {ok: true, saved: true}
+db:
+  messages:
+    - {caller_name: Pat Quinn, urgency: high, callback_language: en}
+admin_contains: [Pat Quinn, warranty dispute]

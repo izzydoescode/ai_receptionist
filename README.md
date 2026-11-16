@@ -51,7 +51,7 @@ Caller ──PSTN──> Twilio number ──(ElevenLabs native Twilio integrati
 - Note: the Language doc says a language picked in the widget stays fixed for the call, while the language_detection tool switches languages based on what the caller says. Test switching on a real phone call.
 
 ## Demo script (90 seconds, live call on speaker plus /admin on the projector)
-1. **Status (EN):** "Hey, it's Carlos Rivera, is my Malibu ready? The number on the ticket is 305-555-0101." Bear verifies last name + phone (or RO 1001) and says it's waiting on the wheel bearing, ready tomorrow by 3, around $480. Last name alone is not enough; Bear will ask for the phone or RO number.
+1. **Status (EN):** "Hey, it's Carlos Rivera, is my Malibu ready? The number on the ticket is 305-555-0101." Bear verifies last name + phone (or repair order 1001) and says it's waiting on the wheel bearing, ready tomorrow by 3, around $480. Last name alone is not enough; Bear will ask for the phone or the repair order number, and can tell the caller it's at the top of the written estimate or on the deposit receipt.
 2. **Booking (ES):** "Hola, necesito cambiar los frenos de mi Altima el lunes a las nueve." Bear switches to Spanish and books it. **The row appears on /admin live.**
 3. **Tow:** "My car's smoking on I-95 near exit 12." Bear asks about safety first and gives the 911 advice, then logs the tow, which shows up on /admin.
 4. **Kreyòl:** "Bonjou, mwen bezwen yon estimasyon pou pòt machin mwen." Bear switches to French and takes a message flagged for a Kreyòl callback. Say: "Native Creole is next, and here's the plan."
@@ -104,6 +104,7 @@ To run it in Docker or deploy it (Fly.io + Neon), see `docs/DEPLOY.md`.
 | `TOOL_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret every `/tools/*` call must send in `X-Tool-Secret`. Min 32 chars. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
 | `INIT_WEBHOOK_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret ElevenLabs must send in `X-Init-Webhook-Secret` to `POST /elevenlabs/init`. Min 32 chars and different from `TOOL_SECRET`. |
 | `INIT_WEBHOOK_SECRET_PREVIOUS` | no | none | Previous init secret, also accepted during rotation. If set, same 32-char and not-`TOOL_SECRET` rules as `INIT_WEBHOOK_SECRET`. |
+| `POST_CALL_WEBHOOK_SECRET` | for call summaries | none | HMAC secret ElevenLabs generates for the post-call webhook. If it's unset, `POST /elevenlabs/post-call` returns 503. It must differ from `TOOL_SECRET` and `INIT_WEBHOOK_SECRET`. See `docs/ELEVENLABS_POST_CALL.md`. |
 | `ADMIN_USER` | no | `admin` | HTTP Basic username for `/admin`. |
 | `ADMIN_PASSWORD` | for `/admin` | none | HTTP Basic password. If unset, `/admin` returns 503. |
 | `BEAR_ENV` | no | none | Set to `dev` for local hacking: allows starting without `TOOL_SECRET` (tools are then open, with a warning) and enables `POST /admin/reset`. Never set it in production. |
@@ -112,14 +113,14 @@ To run it in Docker or deploy it (Fly.io + Neon), see `docs/DEPLOY.md`.
 | `SHOP_ID` | no | `vice-city-auto` | Default shop used by tools; lowercase letters, digits and hyphens, starting with a letter or digit, up to 64 characters. It must have a file in `SHOPS_DIR`. |
 | `SHOPS_DIR` | no | the repo's `shops/` | Folder with one `<shop_id>.yaml` per shop. Every file is validated at startup and any problem stops the app. |
 
-Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `POST /elevenlabs/init` (call-start webhook, needs `X-Init-Webhook-Secret`; see `docs/ELEVENLABS_INIT.md`), `GET /admin` (HTTP Basic, `?shop=<id>` or `?shop=unknown`), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or RO number** on the ticket.
+Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `POST /elevenlabs/init` (call-start webhook, needs `X-Init-Webhook-Secret`; see `docs/ELEVENLABS_INIT.md`), `POST /elevenlabs/post-call` (post-call summaries, needs a valid `ElevenLabs-Signature`; see `docs/ELEVENLABS_POST_CALL.md`), `GET /admin` (HTTP Basic, `?shop=<id>` or `?shop=unknown`), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or the repair order number** on the ticket (the number at the top of the written estimate, or on the deposit receipt).
 
 ### Postgres
 Set `DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE` in your environment, then run `alembic upgrade head` from `backend/` before starting the app. `postgres://` and `postgresql://` URLs are also normalized to psycopg. For TLS, append `?sslmode=require`. Keep real credentials out of source control and logs.
 
 Neon (planned production DB): paste Neon's connection string as-is, e.g. `DATABASE_URL=postgresql://USER:PASSWORD@ep-example-123456.us-east-2.aws.neon.tech/vicecity?sslmode=require`. The engine uses `pool_pre_ping`, so connections dropped while Neon's compute is suspended are replaced. On Fly.io the URL belongs in a Fly secret, not in `fly.toml`, and `alembic upgrade head` should run as the release command. Neither is set up yet. SQLite on Fly is not durable without a volume, so use it only locally.
 
-The app requires all five tables at startup and never creates or seeds them automatically. Demo data is optional: `python -m bear.seed --demo --shop vice-city-auto` upserts four repair orders. `/admin?shop=vice-city-auto` selects a shop's newest 50 rows per section. The dev reset clears only the configured shop and reloads its demo orders.
+The app requires all six tables at startup and never creates or seeds them automatically. Demo data is optional: `python -m bear.seed --demo --shop vice-city-auto` upserts four repair orders. `/admin?shop=vice-city-auto` selects a shop's newest 50 rows per section. The dev reset clears only the configured shop and reloads its demo orders.
 
 ### Tool responses and input rules
 - Every tool body may include `shop_id` (defaults to `SHOP_ID`); a well-formed id with no shop file returns `200 {"ok": false, "error": "unknown_shop", ...}`.
@@ -154,4 +155,4 @@ On every push and pull request:
 Security also runs weekly. Dependabot opens weekly grouped updates for pip and the pinned actions. The repo is public and `CODE_SCANNING_UPLOAD` is already set, so CodeQL results are uploaded to the Security tab.
 
 The tests use only dummy secrets and temporary SQLite databases. The default suite never calls external services or writes into `tools/`. To run the optional Postgres tests against a disposable test database, set `BEAR_TEST_PG_URL` and run `python -m pytest -m pg`; these tests migrate and reset test data.
-Compliance note for real deployment: Florida requires all-party consent to record calls (Fla. Stat. 934.03), which is why the greeting says "calls may be recorded." Bear also tells callers it's an AI.
+Compliance note for real deployment: Florida requires all-party consent to record calls (Fla. Stat. 934.03), which is why the greeting says the call may be recorded. Bear's greeting also says it's the shop's AI assistant, it never claims to be human, and if a caller asks whether they're talking to a person, a bot, or an AI, it answers truthfully and keeps helping. Confirm the AI-disclosure wording with counsel before a real shop goes live.

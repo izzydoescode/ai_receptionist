@@ -67,7 +67,9 @@ def test_known_number_returns_that_shops_variables_and_overrides(init_client):
         "shop_timezone": "America/New_York",
         "languages_text": "English, Spanish and French",
         "call_start_local": data["dynamic_variables"]["call_start_local"],
+        "callback_text": shop.callback_text(),
     }
+    assert data["dynamic_variables"]["callback_text"].startswith("Staff can call back in English and Spanish.")
     assert_recent_local(data["dynamic_variables"]["call_start_local"], "America/New_York")
     assert data["conversation_config_override"] == {
         "agent": {"first_message": shop.first_messages["en"], "language": "en"},
@@ -99,12 +101,17 @@ def test_unknown_number_gets_a_safe_message_only_greeting(init_client, number):
     assert variables["shop_id"] == "unknown"
     assert variables["shop_timezone"] == "America/New_York"  # the default shop's zone
     assert variables["languages_text"] == "English"
+    # Nobody is known to staff this line, so promise nothing beyond an English callback.
+    assert variables["callback_text"].startswith("Staff can call back in English.")
+    assert "Kreyòl ap rele" not in variables["callback_text"]
     assert_recent_local(variables["call_start_local"], "America/New_York")
     assert "Vice City" not in str(data)
     assert "take a message" in variables["features_text"]
     agent = data["conversation_config_override"]["agent"]
     assert agent["language"] == "en"
     assert "may be recorded" in agent["first_message"]
+    assert "ai assistant" in agent["first_message"].lower()
+    assert variables["persona_name"] == "the shop's AI assistant"
     assert "tts" not in data["conversation_config_override"]
 
 

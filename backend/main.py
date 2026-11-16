@@ -36,13 +36,18 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 from sqlalchemy import text
+from starlette.concurrency import run_in_threadpool
 
+from bear.alerts import send_staff_alert, warn_if_prod_log_only
 from bear.db import check_schema, make_engine
 from bear.initiation import InitRequest, shop_initiation, unknown_initiation
+from bear.post_call import parse_transcription
 from bear.seed import DEMO_REPAIR_ORDERS
-from bear.shops import SHOP_ID_PATTERN, TOW_FALLBACK_REPLY, UNKNOWN_SHOP_ID, ShopConfig, load_shops
+from bear.shops import LANGUAGE_NAMES, SHOP_ID_PATTERN, TOW_FALLBACK_REPLY, UNKNOWN_SHOP_ID, ShopConfig, load_shops
 from bear.store import SlotFull, Store
+from bear.webhook_signature import SignatureError, verify_signature
 
+POST_CALL_MAX_BYTES = 2 * 1024 * 1024  # transcription events only; leave "Send audio data" off
 DEFAULT_SHOPS_DIR = Path(__file__).resolve().parent.parent / "shops"
 
 
@@ -56,8 +61,10 @@ class Settings:
     shops_dir: str = str(DEFAULT_SHOPS_DIR)
     init_webhook_secret: str = ""
     init_webhook_secret_previous: str = ""
+    post_call_webhook_secret: str = ""
     tool_deadline_ms: int = 4000
     admin_user: str = "admin"
+    alerts_mode: str = "log"
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -67,17 +74,22 @@ class Settings:
                 raise ValueError
         except ValueError:
             raise RuntimeError("TOOL_DEADLINE_MS must be a positive integer") from None
+        alerts_mode = os.getenv("ALERTS_MODE", "log")
+        if alerts_mode not in {"log", "off"}:
+            raise RuntimeError("ALERTS_MODE must be log or off")
         return cls(
             tool_deadline_ms=deadline_ms,
             tool_secret=os.getenv("TOOL_SECRET", ""),
             init_webhook_secret=os.getenv("INIT_WEBHOOK_SECRET", ""),
             init_webhook_secret_previous=os.getenv("INIT_WEBHOOK_SECRET_PREVIOUS", ""),
+            post_call_webhook_secret=os.getenv("POST_CALL_WEBHOOK_SECRET", ""),
             env=os.getenv("BEAR_ENV", ""),
             admin_user=os.getenv("ADMIN_USER", "admin"),
             admin_password=os.getenv("ADMIN_PASSWORD", ""),
             database_url=os.getenv("DATABASE_URL", "sqlite:///./vicecity.db"),
             shop_id=os.getenv("SHOP_ID", "vice-city-auto"),
             shops_dir=os.getenv("SHOPS_DIR") or str(DEFAULT_SHOPS_DIR),
+            alerts_mode=alerts_mode,
         )
 
 
@@ -90,22 +102,36 @@ STATUS_TEXT = {
 }
 
 
+# Said only when the shop lists the language in callback_languages (docs/SHOPS.md).
+STAFFED_CALLBACK = {
+    "es": "Alguien que habla español le devolverá la llamada.",
+    "fr": "Quelqu'un qui parle français vous rappellera.",
+    "ht": "Yon moun ki pale Kreyòl ap rele w tounen.",
+}
+
 UNKNOWN_SHOP = {
     "ok": False,
     "error": "unknown_shop",
-    "message": "I can't do that on this line. Offer to take a message so someone can call back.",
+    "message": "I can't actually do that on this line. Offer to take a message so someone can call the caller back.",
 }
 
 REPAIR_STATUS_NEEDS = {
     "ok": True,
     "found": False,
     "needs": ["last_name", "phone_or_ro_number"],
-    "message": "I need the last name on the repair order plus the phone number on the ticket or the RO number.",
+    "message": (
+        "I just need the last name on the repair order, plus either the phone number on the ticket "
+        "or the repair order number. You'll find that number at the top of your written estimate "
+        "if you got one, or on your deposit receipt if you already dropped the car off and paid a deposit."
+    ),
 }
 REPAIR_STATUS_FAILURE = {
     "ok": True,
     "found": False,
-    "message": "I couldn't verify that repair order. Offer to take a message for the service writer.",
+    "message": (
+        "I'm not finding a match with that info. Offer to take a message for the service writer "
+        "so they can look it up and call the caller back."
+    ),
 }
 
 
@@ -238,9 +264,9 @@ def invalid_input(field, message):
 
 def validation_message(field, error):
     hints = {
-        "phone": "I need a 10-digit US number, area code and all, or an international number starting with plus and the country code.",
-        "preferred_date": "I need the date as year-month-day, like 2026-11-20.",
-        "preferred_time": "I need the time in 24-hour format, like 09:30 or 14:00.",
+        "phone": "I'll need a 10-digit phone number, area code and all. If it's not a US number, just give me the plus sign and the country code first.",
+        "preferred_date": "I'll need the date as year-month-day, like 2026-11-20.",
+        "preferred_time": "I'll need the time in 24-hour format, like 09:30 or 14:00.",
         "language": "Language must be en, es, fr or ht.",
         "callback_language": "Language must be en, es, fr or ht.",
         "urgency": "Urgency must be low, normal or high.",
@@ -360,7 +386,7 @@ class RequestLoggingMiddleware:
                         {
                             "ok": False,
                             "error": "internal_error",
-                            "message": "Sorry, something went wrong on our end. Let me take a message.",
+                            "message": "Sorry about that. Something went wrong on our end. Let me take a message so someone can call you back.",
                         }
                     )(scope, receive, downstream_send)
 
@@ -384,7 +410,7 @@ class RequestLoggingMiddleware:
                         {
                             "ok": False,
                             "error": "timeout",
-                            "message": "Sorry, our system is slow right now. Let me take a message.",
+                            "message": "Sorry about the wait. Our system's running a little slow right now. Let me take a message so someone can call you back.",
                         }
                     )(scope, receive, capture)
             else:
@@ -526,6 +552,11 @@ def create_app() -> FastAPI:
             raise RuntimeError("INIT_WEBHOOK_SECRET_PREVIOUS must differ from TOOL_SECRET")
     if not settings.init_webhook_secret:
         logging.getLogger("bear").warning("INIT_WEBHOOK_SECRET is unset; the init webhook is open in dev")
+    if settings.post_call_webhook_secret in {settings.tool_secret, settings.init_webhook_secret} - {""}:
+        raise RuntimeError("POST_CALL_WEBHOOK_SECRET must differ from TOOL_SECRET and INIT_WEBHOOK_SECRET")
+    if not settings.post_call_webhook_secret:
+        logging.getLogger("bear").warning("POST_CALL_WEBHOOK_SECRET is unset; post-call summaries are disabled")
+    warn_if_prod_log_only(settings.alerts_mode, settings.env)
 
     if not re.fullmatch(SHOP_ID_PATTERN, settings.shop_id):
         raise RuntimeError("invalid SHOP_ID")
@@ -630,7 +661,7 @@ def create_app() -> FastAPI:
     def slot_problem(shop: ShopConfig, dt: datetime) -> str | None:
         reason = shop.closed_reason(dt)
         if reason is None and dt < datetime.now(shop.tz):
-            return "That time already passed."
+            return "That time's already come and gone. Want to look at a later slot?"
         return reason
 
     def next_slots(shop: ShopConfig, start: datetime, n: int = 3) -> list[str]:
@@ -683,6 +714,45 @@ def create_app() -> FastAPI:
             reply = shop_initiation(shop, now)
         return JSONResponse(reply.model_dump(exclude_none=True))
 
+    @app.post("/elevenlabs/post-call")
+    async def elevenlabs_post_call(request: Request):
+        """Post-call webhook: keep a short, signed summary of each finished call (never the transcript)."""
+        if not settings.post_call_webhook_secret:
+            raise HTTPException(status_code=503, detail="post-call webhook disabled")
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > POST_CALL_MAX_BYTES:
+                raise HTTPException(status_code=413, detail="request body too large")
+        try:
+            verify_signature(
+                bytes(raw),
+                request.headers.get("elevenlabs-signature"),
+                settings.post_call_webhook_secret,
+                now=time.time(),
+            )
+        except SignatureError:
+            raise HTTPException(status_code=401, detail="bad signature") from None
+        try:
+            event = json.loads(raw)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid JSON body") from None
+        if not isinstance(event, dict) or not isinstance(event.get("type"), str):
+            raise HTTPException(status_code=400, detail="invalid event")
+        if event["type"] != "post_call_transcription":
+            return {"status": "ignored"}  # audio, call_initiation_failure, and future types
+        if not isinstance(event.get("data"), dict):
+            raise HTTPException(status_code=400, detail="invalid event")
+        try:
+            call = parse_transcription(event["data"])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid conversation_id") from None
+        shop_id = call.shop_id if call.shop_id in shops else UNKNOWN_SHOP_ID
+        request.state.bear_shop_id = shop_id
+        request.state.bear_conversation_id = call.fields["conversation_id"]
+        saved = await run_in_threadpool(store.save_call_summary, shop_id, **call.fields)
+        return {"status": "stored" if saved else "duplicate"}
+
     @app.post("/tools/book_appointment", dependencies=[Depends(check_secret)])
     def book_appointment(req: BookAppointment):
         if error := missing_shop(req.shop_id):
@@ -691,7 +761,9 @@ def create_app() -> FastAPI:
         if shop is None:
             return UNKNOWN_SHOP
         if date.fromisoformat(req.preferred_date) > datetime.now(shop.tz).date() + timedelta(days=60):
-            return invalid_input("preferred_date", "I can only book up to 60 days out.")
+            return invalid_input(
+                "preferred_date", "I can only book up to 60 days out, so we'll need a date sooner than that."
+            )
         dt = datetime.strptime(f"{req.preferred_date} {req.preferred_time}", "%Y-%m-%d %H:%M").replace(tzinfo=shop.tz)
         slot = shop.slot_start(dt)
         if slot is not None and slot != dt:
@@ -704,7 +776,7 @@ def create_app() -> FastAPI:
             try:
                 appt = store.book_appointment(shop.shop_id, shop.slot_start(dt), shop.bays_per_slot, **fields)
             except SlotFull:
-                problem = "That slot is full."
+                problem = "That time's already booked up. I can offer a few other times that are open."
         if problem:
             return {
                 "ok": True,
@@ -712,12 +784,17 @@ def create_app() -> FastAPI:
                 "message": problem,
                 "alternatives": next_slots(shop, max(dt, datetime.now(shop.tz))),
             }
+        when = dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " ")
+        send_staff_alert(settings.alerts_mode, "booking", shop_id=shop.shop_id, public_id=appt["public_id"])
         return {
             "ok": True,
             "booked": True,
             "confirmation": appt["public_id"],
-            "when": dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " "),
-            "message": f"Booked {req.vehicle} for {req.service}. Bring the keys to the front desk.",
+            "when": when,
+            "message": (
+                f"You're all set. I've booked the {req.vehicle} for {req.service}. "
+                "Just bring the keys to the front desk when you come in."
+            ),
         }
 
     @app.post("/tools/check_repair_status", dependencies=[Depends(check_secret)])
@@ -773,10 +850,14 @@ def create_app() -> FastAPI:
         fields = req.model_dump(exclude={"shop_id"})
         fields["destination"] = req.destination or shop.name
         tow = store.create_tow(shop.shop_id, **fields, status="dispatch_requested")
+        send_staff_alert(settings.alerts_mode, "tow", shop_id=shop.shop_id, public_id=tow["public_id"])
         if shop.features.tow_dispatch:
-            msg = "Tow request logged; dispatcher will call back within 15 minutes with an ETA."
+            msg = (
+                "I've gone ahead and logged the tow. A dispatcher will call you back "
+                "within 15 minutes with an arrival time."
+            )
         else:
-            msg = f'Tow request logged. Tell the caller: "{TOW_FALLBACK_REPLY}"'
+            msg = f'I\'ve gone ahead and logged the tow. Tell the caller: "{TOW_FALLBACK_REPLY}"'
         if not req.is_safe:
             msg = "Caller may be unsafe: tell them to call 911 now if anyone is hurt or they're in traffic. " + msg
         return {"ok": True, "logged": True, "ticket": tow["public_id"], "message": msg}
@@ -787,22 +868,30 @@ def create_app() -> FastAPI:
         if error := missing_shop(req.shop_id):
             return error
         if req.shop_id == UNKNOWN_SHOP_ID:
-            shop_id = UNKNOWN_SHOP_ID
+            shop_id, staffed = UNKNOWN_SHOP_ID, ["en"]
         else:
             shop = resolve_shop(req.shop_id)
             if shop is None:
                 return UNKNOWN_SHOP
-            shop_id = shop.shop_id
+            shop_id, staffed = shop.shop_id, shop.callback_languages
         m = store.create_message(shop_id, **req.model_dump(exclude={"shop_id"}))
-        lang = {
-            "ht": " A Creole-speaking team member will call back.",
-            "es": " Alguien que habla español le llamará.",
-        }.get(req.callback_language, "")
+        send_staff_alert(settings.alerts_mode, "message", shop_id=shop_id, public_id=m["public_id"])
+        language = req.callback_language
+        if language == "en":
+            lang = ""
+        elif language in staffed:
+            lang = " " + STAFFED_CALLBACK[language]
+        else:
+            lang = (
+                f" Don't promise a {LANGUAGE_NAMES[language]}-speaking callback; "
+                "no one who speaks it is listed for this shop."
+            )
         return {
             "ok": True,
             "saved": True,
             "ticket": m["public_id"],
-            "message": "Message saved for the service writer. The shop will call back as soon as possible." + lang,
+            "message": "I've gone ahead and saved your message for the service writer. The shop will call you back as soon as possible."
+            + lang,
         }
 
     @app.get("/admin", response_class=HTMLResponse, dependencies=[Depends(check_admin)])
@@ -828,21 +917,46 @@ def create_app() -> FastAPI:
             return str(value)
 
         def table(rows, cols):
-            h = "".join(f"<th>{html.escape(str(c), quote=True)}</th>" for c in cols)
-            b = "".join(
-                "<tr>" + "".join(f"<td>{html.escape(display(r.get(c, '')), quote=True)}</td>" for c in cols) + "</tr>"
-                for r in rows
-            )
+            def th(col):
+                name = html.escape(str(col), quote=True)
+                if col in {"urgency", "callback_language"}:
+                    return f'<th class="standout">{name}</th>'
+                return f"<th>{name}</th>"
+
+            def td(col, row):
+                value = row.get(col, "")
+                text = html.escape(display(value), quote=True)
+                classes = []
+                if col == "urgency" and str(value).lower() == "high":
+                    classes.append("urgency-high")
+                if col == "callback_language" and value not in (None, "", "en"):
+                    classes.append("callback-other")
+                attr = f' class="{" ".join(classes)}"' if classes else ""
+                return f"<td{attr}>{text}</td>"
+
+            h = "".join(th(c) for c in cols)
+            b = "".join("<tr>" + "".join(td(c, r) for c in cols) + "</tr>" for r in rows)
             return f"<table><tr>{h}</tr>{b}</table>"
+
+        def call_row(row):
+            seconds = row["duration_secs"]
+            return {
+                **{key: "" if value is None else value for key, value in row.items()},
+                "duration": "" if seconds is None else f"{seconds // 60}:{seconds % 60:02}",
+            }
+
+        calls = [call_row(row) for row in db["call_summaries"]]
 
         return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(board_name), quote=True)} board</title>
     <style>body{{font-family:system-ui;margin:24px}}table{{border-collapse:collapse;margin-bottom:24px}}
-    td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}</style></head><body>
+    td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}
+    th.standout{{background:#4a3b14}}td.urgency-high{{background:#f6c1c1;font-weight:700}}td.callback-other{{background:#ffe08a;font-weight:700}}</style></head><body>
     <h1>{html.escape(str(board_name), quote=True)}: AI receptionist live board</h1>
     <h2>Appointments</h2>{table(db["appointments"], ["public_id", "slot_start", "customer_name", "phone", "vehicle", "service", "language"])}
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
     <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "vehicle", "reason", "urgency", "callback_language", "conversation_id"])}
     <h2>Open repair orders</h2>{table(db["repair_orders"], ["ro_number", "customer_name", "vehicle", "status", "eta"])}
+    <h2>Recent calls</h2>{table(calls, ["started_at", "duration", "outcome", "title", "summary", "language", "conversation_id"])}
     </body></html>"""
 
     @app.post("/admin/reset")

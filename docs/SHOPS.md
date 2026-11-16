@@ -28,6 +28,7 @@ The errors show where the problem is and what's wrong, but never the value you e
 | `services` | yes | At least one, 1-80 characters each |
 | `languages` | yes | Unique subset of `en`, `es`, `fr` |
 | `ht_fallback` | no | What happens when a caller speaks Haitian Creole: `message` (default) takes a message, `french` switches to French and needs `fr` in `languages` |
+| `callback_languages` | no | Languages staff can return calls in, from `en`, `es`, `fr`, `ht`, with no repeats. Default `[en]`. Bear only promises a callback in a listed language (for example "someone who speaks Kreyòl will call you back"). |
 | `voices` | yes | One ElevenLabs voice id for each language in `languages`, and no others |
 | `first_messages` | yes | One greeting for each language in `languages`, and no others. Each greeting has to include that language's recording notice (case and accents are ignored): English `may be recorded`; Spanish `puede ser grabada`, `pueden ser grabadas`, or `se puede grabar`; French `peut être enregistré`. Florida law requires every party's consent to record a call (Fla. Stat. 934.03) |
 | `features` | no | `sms_confirmations`, `tow_dispatch`, `photo_texting`. All default to `false`. Turn a flag on only when the shop really does that: the flags only change what the agent promises, they do not send texts, dispatch a tow, or accept photo texts |
@@ -41,5 +42,5 @@ Unknown keys are rejected at every level, so a typo fails at startup instead of 
 - Booking follows that shop's hours, holidays, `slot_minutes` and `bays_per_slot`, in the shop's time zone. A requested time must start a slot (off-grid times are `invalid_input`). The tow destination defaults to the shop's `name`.
 - `/admin?shop=<id>` shows that shop's name and timestamps in that shop's time zone. A shop with no file returns 404.
 - Tool log lines include `shop_id`.
-- Tows and messages are stored and shown on `/admin` (the page refreshes every 3 seconds). There is no staff email or SMS alert yet, so a callback promise holds only while a person is watching the board.
+- Tows, messages and bookings are stored and shown on `/admin` (the page refreshes every 3 seconds). When one of those is created, Bear also logs one line: `STAFF ALERT (log only, not delivered): new <kind> for shop <shop_id>, ticket <id>`. The line never includes names, phone numbers or what the caller said, and nothing is actually emailed or texted. `ALERTS_MODE` defaults to `log`; set it to `off` to silence it. With `BEAR_ENV=prod` and `ALERTS_MODE=log`, the app also logs one startup warning that alerts are log-only. An alert can never fail a tool call: errors are logged and the caller still gets the saved result.
 
