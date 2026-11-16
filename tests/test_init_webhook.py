@@ -110,6 +110,8 @@ def test_unknown_number_gets_a_safe_message_only_greeting(init_client, number):
     agent = data["conversation_config_override"]["agent"]
     assert agent["language"] == "en"
     assert "may be recorded" in agent["first_message"]
+    assert "ai assistant" in agent["first_message"].lower()
+    assert variables["persona_name"] == "the shop's AI assistant"
     assert "tts" not in data["conversation_config_override"]
 
 

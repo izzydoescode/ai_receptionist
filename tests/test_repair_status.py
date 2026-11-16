@@ -8,8 +8,12 @@ import pytest
 from test_tool_scripts import load_script
 
 ROOT = Path(__file__).resolve().parents[1]
-NEED_MSG = "I need the last name on the repair order plus the phone number on the ticket or the RO number."
-FAIL_MSG = "I couldn't verify that repair order. Offer to take a message for the service writer."
+NEED_MSG = (
+    "I just need the last name on the repair order, plus either the phone number on the ticket "
+    "or the repair order number. You'll find that number at the top of your written estimate "
+    "if you got one, or on your deposit receipt if you already dropped the car off and paid a deposit."
+)
+FAIL_MSG = "I'm not finding a match with that info. Offer to take a message for the service writer so they can look it up and call the caller back."
 NEED = {"ok": True, "found": False, "needs": ["last_name", "phone_or_ro_number"], "message": NEED_MSG}
 FAIL = {"ok": True, "found": False, "message": FAIL_MSG}
 SUCCESS_KEYS = {
@@ -188,8 +192,13 @@ def test_generator_repair_status_schema_requires_last_name():
     description, properties, required = load_script("make_tools").TOOLS["check_repair_status"]
     assert set(properties) == {"last_name", "phone", "ro_number"}
     assert required == ["last_name"]
-    assert "last name" in description.lower()
-    assert "RO" in description
+    lower = description.lower()
+    assert "last name" in lower
+    assert "repair order number" in lower
+    assert "written estimate" in lower
+    assert "deposit receipt" in lower
+    assert " RO " not in f" {description} "
+    assert "RO (" not in description
 
 
 def test_committed_repair_status_properties():
@@ -207,6 +216,10 @@ def test_repair_status_prompt_requires_last_name_without_plate():
     flow = prompt.split("## 2. Repair status", 1)[1].split("## 3.", 1)[0].lower()
     assert "plate" not in flow
     assert "last name" in flow
+    assert "repair order number" in flow
+    assert "written estimate" in flow
+    assert "deposit receipt" in flow
+    assert " ro " not in f" {flow} "
 
 
 @pytest.mark.parametrize(

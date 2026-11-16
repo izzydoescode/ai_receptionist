@@ -52,7 +52,7 @@ def test_deadline_does_not_persist_late(make_client, monkeypatch, payloads, tool
     assert response.json() == {
         "ok": False,
         "error": "timeout",
-        "message": "Sorry, our system is slow right now. Let me take a message.",
+        "message": "Sorry about the wait. Our system's running a little slow right now. Let me take a message so someone can call you back.",
     }
     entry = request_record(caplog, response, "POST", f"/tools/{tool}", tool)
     assert entry["error"] == "timeout"
@@ -137,7 +137,7 @@ def test_write_cycle_bails_when_the_request_is_no_longer_open(
     assert response.json() == {
         "ok": False,
         "error": "internal_error",
-        "message": "Sorry, something went wrong on our end. Let me take a message.",
+        "message": "Sorry about that. Something went wrong on our end. Let me take a message so someone can call you back.",
     }
     assert flag not in response.json()
     assert {name: rows(client, name) for name in collections} == before

@@ -19,7 +19,7 @@ calls:
     headers: {X-Tool-Secret: "wrong-secret"}  # optional header overrides
     expect_status: 401        # optional; default 200. Non-200 responses skip the JSON checks
     expect: {booked: true}    # exact values in the response
-    expect_contains: {message: Bring the keys}   # substrings of response fields
+    expect_contains: {message: bring the keys}   # substrings of response fields
     expect_length: {alternatives: 3}
     expect_missing_keys: [vehicle]               # fields that must not appear
     expect_not_in_response: [Carlos]             # text that must not appear anywhere in the response

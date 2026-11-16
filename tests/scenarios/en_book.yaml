@@ -11,7 +11,7 @@ calls:
       preferred_date: "{next_monday}"
       preferred_time: "10:00"
     expect: {ok: true, booked: true}
-    expect_contains: {message: Bring the keys, when: Monday}
+    expect_contains: {message: bring the keys, when: Monday}
 db_counts: {appointments: 1}
 db:
   appointments:

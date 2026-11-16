@@ -79,7 +79,7 @@ def test_repair_status_only_searches_the_requested_shop(two_shops, tool_headers)
 def test_booking_uses_the_requested_shops_hours(two_shops, payloads, tool_headers):
     monday = payloads["book_appointment"]
     closed = call(two_shops, tool_headers, "book_appointment", {**monday, "shop_id": "west-shop"})
-    assert closed["message"] == "We're closed Mondays."
+    assert closed["message"] == "We're closed Mondays, but I can look at another day for you."
     assert closed["alternatives"][0].startswith("Tuesday")
     assert call(two_shops, tool_headers, "book_appointment", {**monday, "shop_id": "vice-city-auto"})["booked"] is True
 
@@ -184,6 +184,9 @@ def test_unknown_number_calls_cannot_use_other_tools(two_shops, payloads, tool_h
     result = call(two_shops, tool_headers, tool, {**payloads[tool], "shop_id": "unknown"})
     assert result["ok"] is False
     assert result["error"] == "unknown_shop"
-    assert "take a message" in result["message"]
+    assert (
+        result["message"]
+        == "I can't actually do that on this line. Offer to take a message so someone can call the caller back."
+    )
     assert not any(board(two_shops, "unknown").values())
     assert len(audit(two_shops)) == audit_before

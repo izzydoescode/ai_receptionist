@@ -40,7 +40,7 @@ Every table: integer PK `id`, `shop_id` (String(64), indexed, not null), `public
 - `python -m bear.seed --demo [--shop SHOP_ID]` (run from backend/) upserts the 4 demo repair orders for the shop (default `vice-city-auto`), idempotent, prints a one-line count without PII. `bear.seed.main(argv) -> int`; no `--demo` -> usage error (SystemExit 2 from argparse). Uses DATABASE_URL; requires the schema (clear error mentioning `alembic upgrade head` otherwise).
 
 ## Endpoint behaviour (unchanged responses unless stated)
-- book_appointment: slot rules from the shop config (hours, holidays, `slot_minutes`, `bays_per_slot`; Task 7); full slot -> same `booked: False` "That slot is full." response with alternatives computed from `booked_counts`. Confirmation = appointment public_id.
+- book_appointment: slot rules from the shop config (hours, holidays, `slot_minutes`, `bays_per_slot`; Task 7); full slot -> same `booked: False` "That time's already booked up. I can offer a few other times that are open." response with alternatives computed from `booked_counts`. Confirmation = appointment public_id.
 - tickets for tows/messages = public_id.
 - check_repair_status: same verification logic over `list_repair_orders(shop_id)` for the resolved shop, plus audit.
 - Deadline: the write_guard raises the private deadline exception when the request deadline has passed, so a timed-out write never commits.

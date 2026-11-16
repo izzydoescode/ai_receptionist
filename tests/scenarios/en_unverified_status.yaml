@@ -7,7 +7,7 @@ calls:
     expect:
       ok: true
       found: false
-      message: I couldn't verify that repair order. Offer to take a message for the service writer.
+      message: I'm not finding a match with that info. Offer to take a message for the service writer so they can look it up and call the caller back.
     expect_missing_keys: [ro_number, vehicle, status, eta, estimated_balance, customer_first_name]
     expect_not_in_response: [Carlos, Malibu, "1001", waiting on parts, $480]
   - tool: check_repair_status

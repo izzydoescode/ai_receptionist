@@ -42,5 +42,5 @@ Unknown keys are rejected at every level, so a typo fails at startup instead of 
 - Booking follows that shop's hours, holidays, `slot_minutes` and `bays_per_slot`, in the shop's time zone. A requested time must start a slot (off-grid times are `invalid_input`). The tow destination defaults to the shop's `name`.
 - `/admin?shop=<id>` shows that shop's name and timestamps in that shop's time zone. A shop with no file returns 404.
 - Tool log lines include `shop_id`.
-- Tows and messages are stored and shown on `/admin` (the page refreshes every 3 seconds). There is no staff email or SMS alert yet, so a callback promise holds only while a person is watching the board.
+- Tows, messages and bookings are stored and shown on `/admin` (the page refreshes every 3 seconds). When one of those is created, Bear also logs one line: `STAFF ALERT (log only, not delivered): new <kind> for shop <shop_id>, ticket <id>`. The line never includes names, phone numbers or what the caller said, and nothing is actually emailed or texted. `ALERTS_MODE` defaults to `log`; set it to `off` to silence it. With `BEAR_ENV=prod` and `ALERTS_MODE=log`, the app also logs one startup warning that alerts are log-only. An alert can never fail a tool call: errors are logged and the caller still gets the saved result.
 

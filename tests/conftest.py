@@ -26,6 +26,7 @@ CONFIG_KEYS = (
     "INIT_WEBHOOK_SECRET",
     "INIT_WEBHOOK_SECRET_PREVIOUS",
     "POST_CALL_WEBHOOK_SECRET",
+    "ALERTS_MODE",
 )
 EXAMPLE_SHOP = yaml.safe_load((Path(__file__).resolve().parents[1] / "shops/vice-city-auto.yaml").read_text("utf-8"))
 

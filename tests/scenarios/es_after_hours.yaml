@@ -13,7 +13,7 @@ calls:
       preferred_date: "{next_sunday}"
       preferred_time: "10:00"
       language: es
-    expect: {ok: true, booked: false, message: We're closed Sundays.}
+    expect: {ok: true, booked: false, message: "We're closed Sundays, but I can look at another day for you."}
     expect_length: {alternatives: 3}
   - tool: take_message
     args:
@@ -22,7 +22,7 @@ calls:
       reason: Quiere una cita para revisar el aire acondicionado; prefiere que la llamen el lunes
       callback_language: es
     expect: {ok: true, saved: true}
-    expect_contains: {message: Alguien que habla español le llamará.}
+    expect_contains: {message: Alguien que habla español le devolverá la llamada.}
 db_counts: {appointments: 0}
 db:
   messages:

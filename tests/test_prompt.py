@@ -129,9 +129,36 @@ def test_prompt_repeats_the_recording_notice_on_the_first_language_switch():
 
 def test_french_first_message_is_french_only():
     assert first_messages_in_prompt()["fr"] == (
-        "Bonjour, vous êtes bien chez {{shop_name}}. Je suis {{persona_name}}, l'assistant virtuel. "
-        "L'appel peut être enregistré. Comment puis-je vous aider ?"
+        "Bonjour, vous êtes bien chez {{shop_name}}, je suis {{persona_name}}, l'assistant virtuel du garage. "
+        "Juste pour vous le dire, l'appel peut être enregistré. Comment puis-je vous aider ?"
     )
+
+
+AI_DISCLOSURES = {
+    "en": "ai assistant",
+    "es": "asistente virtual",
+    "fr": "assistant virtuel",
+    "ht": "asistan vityèl",
+}
+
+
+@pytest.mark.parametrize("language", sorted(NOTICES))
+def test_prompt_first_message_says_up_front_that_bear_is_ai(language):
+    message = first_messages_in_prompt()[language].lower()
+    question = min(i for i in (message.find("?"), message.find("¿")) if i >= 0)
+    assert 0 <= message.find(AI_DISCLOSURES[language]) < question
+
+
+def test_prompt_never_poses_as_human_and_answers_truthfully_if_asked():
+    text = PROMPT.lower()
+    assert "never claim or imply that you're a human" in text
+    assert "friendly human" not in text
+    assert "real person" in text
+    assert "bot" in text
+    assert "ai assistant" in text
+    assert "keep helping" in text
+    assert "casual" in text
+    assert "contractions" in text
 
 
 CREOLE_CALLBACK_PROMISE = "ki pale kreyòl ap rele w tounen"

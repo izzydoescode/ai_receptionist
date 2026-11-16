@@ -25,7 +25,9 @@ RECORDING_NOTICES = {
     "fr": ("peut être enregistré",),
 }
 # What the agent says instead of promising a feature the shop has turned off (PLAN Task 10).
-TOW_FALLBACK_REPLY = "I've logged it and the shop will call you back as soon as possible. If you're unsafe, call 911."
+TOW_FALLBACK_REPLY = (
+    "I've logged the tow, and the shop will call you back as soon as possible. If you're unsafe, call 911."
+)
 PHOTO_FALLBACK_ADVICE = (
     "Tell callers to bring photos to the estimate, or the service writer will tell them where to send them."
 )
@@ -229,12 +231,12 @@ class ShopConfig(_Frozen):
         if self.slot_start(local) is not None:
             return None
         if local.date() in self.holidays:
-            return "We're closed that day for a holiday."
+            return "We're closed that day for a holiday, but I can look at another day for you."
         intervals = self.hours.for_weekday(local.weekday())
         if not intervals:
-            return f"We're closed {WEEKDAYS[local.weekday()].capitalize()}s."
+            return f"We're closed {WEEKDAYS[local.weekday()].capitalize()}s, but I can look at another day for you."
         spans = " or ".join(f"from {speak_time(i.open)} to {speak_time(i.close)}" for i in intervals)
-        return f"That day we take drop-offs {spans}."
+        return f"We're not open at that time. That day we take drop-offs {spans}."
 
     def upcoming_slots(self, after: datetime, days: int = 14) -> Iterator[datetime]:
         """Yield slot starts strictly after ``after`` for ``days`` local calendar days, in order."""
@@ -265,12 +267,15 @@ class ShopConfig(_Frozen):
             if last != first:
                 days += f" to {WEEKDAYS[last].capitalize()}"
             parts.append(f"{days} {spans}" if spans else f"closed {days}")
-        text = "; ".join(parts) + "."
+        if groups and not groups[0][0]:
+            text = "We're " + "; ".join(parts) + "."
+        else:
+            text = "We're open " + "; ".join(parts) + "."
         upcoming = sorted(day for day in self.holidays if day >= today)[:max_holidays]
         if upcoming:
             names = [f"{d:%A}, {d:%B} {d.day}, {d.year}" for d in upcoming]
             listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
-            text += f" Closed for holidays on {listed}."
+            text += f" We'll also be closed for holidays on {listed}."
         return text
 
     def languages_text(self) -> str:
@@ -290,9 +295,9 @@ class ShopConfig(_Frozen):
                 "We send a text confirmation after booking."
                 if f.sms_confirmations
                 else "We do not send text confirmations.",
-                "Tow requests are dispatched automatically; a dispatcher calls back within 15 minutes with an ETA."
+                "Tow requests get dispatched automatically, and a dispatcher will call back within 15 minutes with an arrival time."
                 if f.tow_dispatch
-                else "Tow requests go to staff; there is no automatic dispatch. After logging a tow, say: "
+                else "Tow requests go to staff; there's no automatic dispatch. After logging a tow, say: "
                 f'"{TOW_FALLBACK_REPLY}"',
                 "Callers can text photos to this number for a faster estimate."
                 if f.photo_texting

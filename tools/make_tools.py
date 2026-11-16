@@ -74,7 +74,7 @@ TOOLS = {
         ["customer_name", "phone", "vehicle", "service", "preferred_date", "preferred_time"],
     ),
     "check_repair_status": (
-        "Look up the status of a car that is already at the shop. Requires the customer's last name AND either the phone number on the ticket or the RO (repair order) number. Ask for both before calling. If found=false with 'needs', ask for what's missing; if it can't verify, offer to take a message."
+        "Look up the status of a car that is already at the shop. Requires the customer's last name AND either the phone number on the ticket or the repair order number. The repair order number is at the top of the written estimate if they got one, or on the deposit receipt if they already dropped the car off and paid a deposit. Ask for both before calling. If found=false with 'needs', ask for what's missing; if it can't verify, offer to take a message."
         + ON_FALSE,
         {
             "last_name": S("Customer last name as on the repair order"),
