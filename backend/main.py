@@ -35,6 +35,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, BeforeValidator, Field, ValidationError
+from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
 from bear.admin import build_admin_router
@@ -524,6 +525,12 @@ def create_app() -> FastAPI:
     if settings.shop_id not in shops:
         raise RuntimeError(f"SHOP_ID {settings.shop_id} has no shop file in SHOPS_DIR")
     default_shop = shops[settings.shop_id]
+    if (
+        settings.database_url.startswith("sqlite:")
+        and settings.env != "dev"
+        and "PYTEST_CURRENT_TEST" not in os.environ
+    ):
+        raise RuntimeError("SQLite is only allowed when BEAR_ENV=dev; set DATABASE_URL to Postgres in production")
     engine = None
     try:
         engine = make_engine(settings.database_url, timeout_seconds=settings.tool_deadline_ms / 1000)
@@ -658,6 +665,15 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health():
         return {"ok": True, "time": datetime.now(default_shop.tz).isoformat()}
+
+    @app.get("/ready")
+    def ready():
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        except Exception:
+            raise HTTPException(status_code=503, detail="database unavailable") from None
+        return {"ok": True}
 
     @app.post("/elevenlabs/init", dependencies=[Depends(check_init_secret)])
     async def elevenlabs_init(request: Request):
@@ -997,7 +1013,6 @@ def create_app() -> FastAPI:
             store=store,
             shops=shops,
             default_shop_id=settings.shop_id,
-            admin_password=settings.admin_password,
             check_admin=check_admin,
             status_labels=RO_STATUS_LABELS,
             closed_status=CLOSED_STATUS,

@@ -205,11 +205,12 @@ def test_unknown_shop_and_ro_are_404(client):
 
 
 def test_csrf_signer_expires_and_rejects_tampering():
-    signer = CsrfSigner("dummy-admin-password")
+    signer = CsrfSigner(b"k" * 32)
     token = signer.issue("vice-city-auto", now=1_000_000)
     assert signer.verify(token, "vice-city-auto", now=1_000_000 + CSRF_MAX_AGE_SECONDS)
     assert not signer.verify(token, "vice-city-auto", now=1_000_001 + CSRF_MAX_AGE_SECONDS)
     assert not signer.verify(token, "vice-city-auto", now=999_999)
     assert not signer.verify(token, "west-shop", now=1_000_000)
     assert not signer.verify(token.replace(".", ".0", 1), "vice-city-auto", now=1_000_000)
-    assert not CsrfSigner("another-password").verify(token, "vice-city-auto", now=1_000_000)
+    assert not CsrfSigner(b"x" * 32).verify(token, "vice-city-auto", now=1_000_000)
+    assert CsrfSigner().key != CsrfSigner().key  # a fresh random key per app start

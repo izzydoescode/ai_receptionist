@@ -5,12 +5,14 @@ This is the MVP of the shop's admin side. It lives in its own router so a dashbo
 
 Every page sits behind the same HTTP Basic login as the live board. Browsers send Basic
 credentials on cross-site form posts too, so every POST also needs a CSRF token tied to
-the shop and signed with a key derived from ADMIN_PASSWORD.
+the shop and signed with a random key made when the app starts (a deploy or restart means
+an open form needs a reload; with more than one machine this would need a shared key).
 """
 
 import hashlib
 import hmac
 import html
+import secrets
 import time
 from collections.abc import Callable
 from datetime import date, datetime
@@ -57,8 +59,8 @@ FIELD_HINTS = {
 class CsrfSigner:
     """Stateless CSRF tokens: '<issued unix seconds>.<hmac(shop_id, issued)>'."""
 
-    def __init__(self, admin_password: str):
-        self.key = hashlib.sha256(b"bear-admin-csrf:" + admin_password.encode("utf-8")).digest()
+    def __init__(self, key: bytes | None = None):
+        self.key = key or secrets.token_bytes(32)
 
     def _signature(self, shop_id: str, issued: int) -> str:
         return hmac.new(self.key, f"{shop_id}:{issued}".encode(), hashlib.sha256).hexdigest()
@@ -134,13 +136,12 @@ def build_admin_router(
     store: Store,
     shops: dict[str, ShopConfig],
     default_shop_id: str,
-    admin_password: str,
     check_admin: Callable,
     status_labels: dict[str, str],
     closed_status: str,
 ) -> APIRouter:
     router = APIRouter(prefix="/admin/ros", dependencies=[Depends(check_admin)])
-    signer = CsrfSigner(admin_password)
+    signer = CsrfSigner()
 
     def resolve(shop_id: str | None) -> ShopConfig:
         shop = shops.get(default_shop_id if shop_id is None else shop_id)

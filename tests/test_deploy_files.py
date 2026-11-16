@@ -1,0 +1,180 @@
+"""Invariants for the container image (PLAN Task 11). CI's docker job builds and runs it for real."""
+
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def read(name):
+    return (ROOT / name).read_text("utf-8")
+
+
+def instructions(dockerfile):
+    """(INSTRUCTION, arguments) pairs, with line continuations joined and comments dropped."""
+    joined = re.sub(r"\\\n", " ", dockerfile)
+    lines = [line.strip() for line in joined.splitlines()]
+    return [tuple(line.split(None, 1)) for line in lines if line and not line.startswith("#")]
+
+
+def args_of(name):
+    return [rest for instruction, rest in instructions(read("Dockerfile")) if instruction.upper() == name]
+
+
+def test_every_base_image_is_pinned_by_digest():
+    bases = args_of("FROM")
+    assert bases
+    for base in bases:
+        image = base.split()[0]
+        assert re.fullmatch(r"python:3\.13-slim-[a-z]+@sha256:[0-9a-f]{64}", image), image
+
+
+def test_runtime_stage_runs_as_a_non_root_user():
+    users = args_of("USER")
+    assert users, "the image must switch away from root"
+    final = users[-1].split(":")[0]
+    assert final not in {"root", "0"}
+    # USER must come after the last FROM, so it applies to the runtime stage.
+    order = [instruction.upper() for instruction, _ in instructions(read("Dockerfile"))]
+    assert max(i for i, name in enumerate(order) if name == "USER") > max(
+        i for i, name in enumerate(order) if name == "FROM"
+    )
+
+
+def test_healthcheck_probes_health_endpoint():
+    (check,) = args_of("HEALTHCHECK")
+    assert "/health" in check
+    assert "--interval" in check and "--timeout" in check
+
+
+def test_uvicorn_serves_the_factory_behind_the_proxy():
+    (command,) = args_of("CMD")
+    for part in ['"uvicorn"', '"--factory"', '"main:create_app"', '"--proxy-headers"', '"0.0.0.0"', '"8080"']:
+        assert part in command
+
+
+def test_migrations_run_on_boot_only_when_asked():
+    script = read("docker-entrypoint.sh")
+    assert script.startswith("#!/bin/sh\nset -eu\n")
+    assert 'if [ "${BEAR_MIGRATE_ON_BOOT:-0}" = "1" ]; then' in script
+    assert "alembic upgrade head" in script
+    assert script.rstrip().endswith('exec "$@"')
+    assert (ROOT / "docker-entrypoint.sh").stat().st_mode & 0o111
+
+
+def test_build_context_leaves_out_secrets_and_local_data():
+    ignored = set(read(".dockerignore").split())
+    for pattern in [".env", ".env.*", "**/*.db", ".git", ".venv", "tests", "**/__pycache__"]:
+        assert pattern in ignored, pattern
+
+
+def fly():
+    import tomllib
+
+    return tomllib.loads(read("fly.toml"))
+
+
+SECRET_NAMES = [
+    "TOOL_SECRET",
+    "INIT_WEBHOOK_SECRET",
+    "ADMIN_PASSWORD",
+    "DATABASE_URL",
+    "POST_CALL_WEBHOOK_SECRET",
+    "ALERTS_EMAIL_API_KEY",
+]
+
+
+def test_fly_app_is_always_on_in_the_east():
+    config = fly()
+    assert config["primary_region"] in {"iad", "ewr"}
+    service = config["http_service"]
+    # The init webhook fires while the phone rings, so it can't wait for a cold start.
+    assert service["auto_stop_machines"] == "off"
+    assert service["min_machines_running"] >= 1
+    assert service["force_https"] is True
+    assert config["vm"][0]["size"] == "shared-cpu-1x"
+
+
+def test_fly_routes_to_the_image_port_and_checks_health():
+    service = fly()["http_service"]
+    assert service["internal_port"] == 8080
+    (check,) = service["checks"]
+    assert check["path"] == "/health"
+    assert check["method"] == "GET"
+
+
+def test_fly_migrates_in_a_release_command_not_on_boot():
+    config = fly()
+    assert config["deploy"]["release_command"] == "alembic upgrade head"
+    assert config["env"]["BEAR_MIGRATE_ON_BOOT"] == "0"
+
+
+def test_fly_env_holds_no_secrets():
+    env = fly()["env"]
+    for name in SECRET_NAMES:
+        assert name not in env
+    assert all("secret" not in key.lower() and "password" not in key.lower() for key in env)
+
+
+def env_vars_read_by_the_app():
+    names = set()
+    for path in (ROOT / "backend").rglob("*.py"):
+        names |= set(re.findall(r"""os\.(?:getenv|environ\.get)\(\s*["']([A-Z_]+)["']""", path.read_text("utf-8")))
+    return names
+
+
+def test_deploy_doc_lists_every_env_var_the_app_reads():
+    doc = read("docs/DEPLOY.md")
+    names = env_vars_read_by_the_app() | {
+        "PUBLIC_BASE_URL",
+        "BEAR_MIGRATE_ON_BOOT",
+        "FORWARDED_ALLOW_IPS",
+        "ALERTS_EMAIL_API_KEY",
+        "ALERTS_EMAIL_FROM",
+    }
+    assert {"TOOL_SECRET", "INIT_WEBHOOK_SECRET", "DATABASE_URL", "SHOPS_DIR"} <= names
+    missing = sorted(name for name in names if f"`{name}`" not in doc)
+    assert not missing, missing
+
+
+def test_deploy_doc_sets_every_secret_with_fly_secrets():
+    doc = read("docs/DEPLOY.md")
+    for name in SECRET_NAMES:
+        assert re.search(rf"fly secrets set[^\n]*\b{name}=", doc) or re.search(rf"^\s+{name}=", doc, re.MULTILINE), name
+
+
+def test_deploy_doc_never_contains_a_literal_secret_value():
+    doc = read("docs/DEPLOY.md")
+    for name in ["TOOL_SECRET", "INIT_WEBHOOK_SECRET", "ADMIN_PASSWORD"]:
+        for value in re.findall(rf"\b{name}=(\S+)", doc):
+            assert value.startswith(("$", "<", '"$')), f"{name}={value}"
+
+
+def test_deploy_doc_prints_secrets_then_imports_them():
+    doc = read("docs/DEPLOY.md")
+    assert "save these now" in doc.lower()
+    assert "fly secrets import --stage" in doc
+
+
+def test_deploy_doc_keeps_one_machine_and_explains_the_tradeoff():
+    doc = read("docs/DEPLOY.md")
+    assert "one machine" in doc.lower()
+    assert "bluegreen" in doc.lower() or "blue-green" in doc.lower()
+    assert "volume" in doc.lower()
+
+
+def test_deploy_doc_points_monitors_at_ready_not_fly_checks():
+    doc = read("docs/DEPLOY.md")
+    assert "`/ready`" in doc
+    assert "SELECT 1" in doc or "select 1" in doc.lower()
+
+
+def test_image_installs_from_the_hashed_runtime_lock():
+    copies = args_of("COPY")
+    assert any("backend/requirements.lock" in item for item in copies)
+    assert not any(re.search(r"backend/requirements\.txt\b", item) for item in copies)
+    installs = [item for item in args_of("RUN") if "pip install" in item]
+    assert installs
+    for item in installs:
+        assert "--require-hashes" in item
+        assert "requirements.lock" in item
