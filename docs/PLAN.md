@@ -261,8 +261,13 @@ Do this only after the A2P 10DLC brand and campaign are approved. Until then, `f
 - Tests mock Twilio and check: no send when the flag is off, no send without consent, exactly one send on retries, and the STOP reply is honored.
 - Cost: $0.0083 per segment plus about $0.003–0.005 carrier fee. Registration is $4.50 for the brand, $15 for campaign vetting, then $1.50–2/mo (https://www.twilio.com/en-us/sms/pricing/us, https://help.twilio.com/articles/1260803965530).
 
-### Task 15 (optional): Post-call webhook ingestion
+### Task 15 (optional): Post-call webhook ingestion (done on `dev/post-call-summary`)
 - `POST /elevenlabs/post-call` verifies the ElevenLabs HMAC signature, stores the conversation id, duration, summary and outcome per shop, and shows them on `/admin`. Full transcripts and audio aren't stored by default; that follows the shop's retention choice.
+
+*Decisions at implementation:*
+- *The signature is checked without the SDK (`t=<secs>,v0=<hmac of "t.body">`): 30-minute maximum age like the SDK, plus a 5-minute future limit. The secret is `POST_CALL_WEBHOOK_SECRET`. If it's unset, the endpoint returns 503 and the app still starts; it must differ from the other secrets.*
+- *Stored per call: conversation id (unique, so retries return `duplicate`), start time, duration, outcome, summary, title and language. The shop comes from the `shop_id` dynamic variable, or `unknown`. Audio, call-initiation failures and future event types get 200 and are ignored.*
+- *A per-shop transcript retention option isn't built yet. No transcript, audio or phone number is stored; they stay in ElevenLabs under its retention settings. Fixtures follow the docs' example payloads. See `docs/ELEVENLABS_POST_CALL.md`.*
 
 ---
 

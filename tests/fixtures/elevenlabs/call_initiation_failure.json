@@ -1,0 +1,20 @@
+{
+  "type": "call_initiation_failure",
+  "event_timestamp": 1759931652,
+  "data": {
+    "agent_id": "agent_demo",
+    "conversation_id": "conv_demo0002",
+    "failure_reason": "busy",
+    "metadata": {
+      "type": "twilio",
+      "body": {
+        "Called": "+13055550199",
+        "Direction": "outbound-api",
+        "CallSid": "CA00000000000000000000000000000001",
+        "To": "+13055550199",
+        "From": "+13055550110",
+        "CallStatus": "busy"
+      }
+    }
+  }
+}

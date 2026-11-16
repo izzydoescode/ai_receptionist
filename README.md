@@ -102,6 +102,7 @@ pip-compile --allow-unsafe --generate-hashes --no-strip-extras --output-file=bac
 | `TOOL_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret every `/tools/*` call must send in `X-Tool-Secret`. Min 32 chars. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
 | `INIT_WEBHOOK_SECRET` | yes (unless `BEAR_ENV=dev`) | none | Shared secret ElevenLabs must send in `X-Init-Webhook-Secret` to `POST /elevenlabs/init`. Min 32 chars and different from `TOOL_SECRET`. |
 | `INIT_WEBHOOK_SECRET_PREVIOUS` | no | none | Previous init secret, also accepted during rotation. If set, same 32-char and not-`TOOL_SECRET` rules as `INIT_WEBHOOK_SECRET`. |
+| `POST_CALL_WEBHOOK_SECRET` | for call summaries | none | HMAC secret ElevenLabs generates for the post-call webhook. If it's unset, `POST /elevenlabs/post-call` returns 503. It must differ from `TOOL_SECRET` and `INIT_WEBHOOK_SECRET`. See `docs/ELEVENLABS_POST_CALL.md`. |
 | `ADMIN_USER` | no | `admin` | HTTP Basic username for `/admin`. |
 | `ADMIN_PASSWORD` | for `/admin` | none | HTTP Basic password. If unset, `/admin` returns 503. |
 | `BEAR_ENV` | no | none | Set to `dev` for local hacking: allows starting without `TOOL_SECRET` (tools are then open, with a warning) and enables `POST /admin/reset`. Never set it in production. |
@@ -110,14 +111,14 @@ pip-compile --allow-unsafe --generate-hashes --no-strip-extras --output-file=bac
 | `SHOP_ID` | no | `vice-city-auto` | Default shop used by tools; lowercase letters, digits and hyphens, starting with a letter or digit, up to 64 characters. It must have a file in `SHOPS_DIR`. |
 | `SHOPS_DIR` | no | the repo's `shops/` | Folder with one `<shop_id>.yaml` per shop. Every file is validated at startup and any problem stops the app. |
 
-Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `POST /elevenlabs/init` (call-start webhook, needs `X-Init-Webhook-Secret`; see `docs/ELEVENLABS_INIT.md`), `GET /admin` (HTTP Basic, `?shop=<id>` or `?shop=unknown`), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or RO number** on the ticket.
+Endpoints: `GET /health` (public, returns only `ok` and `time`), `POST /tools/{book_appointment,check_repair_status,request_tow,take_message}` (need `X-Tool-Secret`), `POST /elevenlabs/init` (call-start webhook, needs `X-Init-Webhook-Secret`; see `docs/ELEVENLABS_INIT.md`), `POST /elevenlabs/post-call` (post-call summaries, needs a valid `ElevenLabs-Signature`; see `docs/ELEVENLABS_POST_CALL.md`), `GET /admin` (HTTP Basic, `?shop=<id>` or `?shop=unknown`), `POST /admin/reset` (dev only, HTTP Basic). Repair status needs the **last name plus the phone number or RO number** on the ticket.
 
 ### Postgres
 Set `DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE` in your environment, then run `alembic upgrade head` from `backend/` before starting the app. `postgres://` and `postgresql://` URLs are also normalized to psycopg. For TLS, append `?sslmode=require`. Keep real credentials out of source control and logs.
 
 Neon (planned production DB): paste Neon's connection string as-is, e.g. `DATABASE_URL=postgresql://USER:PASSWORD@ep-example-123456.us-east-2.aws.neon.tech/vicecity?sslmode=require`. The engine uses `pool_pre_ping`, so connections dropped while Neon's compute is suspended are replaced. On Fly.io the URL belongs in a Fly secret, not in `fly.toml`, and `alembic upgrade head` should run as the release command. Neither is set up yet. SQLite on Fly is not durable without a volume, so use it only locally.
 
-The app requires all five tables at startup and never creates or seeds them automatically. Demo data is optional: `python -m bear.seed --demo --shop vice-city-auto` upserts four repair orders. `/admin?shop=vice-city-auto` selects a shop's newest 50 rows per section. The dev reset clears only the configured shop and reloads its demo orders.
+The app requires all six tables at startup and never creates or seeds them automatically. Demo data is optional: `python -m bear.seed --demo --shop vice-city-auto` upserts four repair orders. `/admin?shop=vice-city-auto` selects a shop's newest 50 rows per section. The dev reset clears only the configured shop and reloads its demo orders.
 
 ### Tool responses and input rules
 - Every tool body may include `shop_id` (defaults to `SHOP_ID`); a well-formed id with no shop file returns `200 {"ok": false, "error": "unknown_shop", ...}`.

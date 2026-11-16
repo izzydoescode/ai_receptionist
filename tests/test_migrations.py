@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TABLES = {"appointments", "repair_orders", "tows", "messages", "audit_events"}
+TABLES = {"appointments", "repair_orders", "tows", "messages", "audit_events", "call_summaries"}
 
 
 def migration_config():

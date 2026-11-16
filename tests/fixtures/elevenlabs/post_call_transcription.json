@@ -1,0 +1,112 @@
+{
+  "type": "post_call_transcription",
+  "event_timestamp": 1739537297,
+  "data": {
+    "agent_id": "agent_demo",
+    "agent_name": "Bear demo",
+    "conversation_id": "conv_demo0001",
+    "status": "done",
+    "user_id": null,
+    "branch_id": null,
+    "version_id": "agtvrsn_demo",
+    "environment": "production",
+    "transcript": [
+      {
+        "role": "agent",
+        "message": "Thanks for calling Vice City Auto. This is Bear, the shop's virtual assistant. This call may be recorded. How can I help?",
+        "tool_calls": null,
+        "tool_results": null,
+        "feedback": null,
+        "time_in_call_secs": 0,
+        "conversation_turn_metrics": null
+      },
+      {
+        "role": "user",
+        "message": "Hi, this is Demo Driver. My brakes are squeaking, can I bring the car in Monday?",
+        "tool_calls": null,
+        "tool_results": null,
+        "feedback": null,
+        "time_in_call_secs": 4,
+        "conversation_turn_metrics": null
+      },
+      {
+        "role": "agent",
+        "message": "Monday at 10 AM is open. What's the best number to reach you, 305-555-0199?",
+        "tool_calls": null,
+        "tool_results": null,
+        "feedback": null,
+        "time_in_call_secs": 9,
+        "conversation_turn_metrics": {
+          "convai_llm_service_ttfb": {
+            "elapsed_time": 0.37
+          }
+        }
+      }
+    ],
+    "metadata": {
+      "start_time_unix_secs": 1739537297,
+      "call_duration_secs": 95,
+      "cost": 296,
+      "deletion_settings": {
+        "deletion_time_unix_secs": 1802609320,
+        "deleted_logs_at_time_unix_secs": null,
+        "deleted_audio_at_time_unix_secs": null,
+        "deleted_transcript_at_time_unix_secs": null,
+        "delete_transcript_and_pii": true,
+        "delete_audio": true
+      },
+      "feedback": {
+        "overall_score": null,
+        "likes": 0,
+        "dislikes": 0
+      },
+      "authorization_method": "authorization_header",
+      "charging": {
+        "dev_discount": true
+      },
+      "termination_reason": "end_call tool was called.",
+      "main_language": "en",
+      "phone_call": {
+        "direction": "inbound",
+        "phone_number_id": "phnum_demo",
+        "agent_number": "+13055550110",
+        "external_number": "+13055550199",
+        "type": "twilio",
+        "stream_sid": "MZdemo",
+        "call_sid": "CA00000000000000000000000000000000"
+      }
+    },
+    "analysis": {
+      "evaluation_criteria_results": {},
+      "data_collection_results": {},
+      "call_successful": "success",
+      "transcript_summary": "Demo Driver called about squeaking brakes and booked a brake inspection for Monday at 10 AM.",
+      "call_summary_title": "Brake inspection booked"
+    },
+    "conversation_initiation_client_data": {
+      "conversation_config_override": {
+        "agent": {
+          "prompt": null,
+          "first_message": null,
+          "language": "en"
+        },
+        "tts": {
+          "voice_id": null
+        }
+      },
+      "custom_llm_extra_body": {},
+      "dynamic_variables": {
+        "shop_id": "vice-city-auto",
+        "shop_name": "Vice City Auto",
+        "shop_city": "Miami",
+        "system__caller_id": "+13055550199",
+        "system__called_number": "+13055550110",
+        "system__conversation_id": "conv_demo0001",
+        "system__call_duration_secs": 95
+      }
+    },
+    "has_audio": true,
+    "has_user_audio": true,
+    "has_response_audio": true
+  }
+}

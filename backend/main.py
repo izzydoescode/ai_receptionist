@@ -35,13 +35,17 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, BeforeValidator, Field, ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from bear.db import check_schema, make_engine
 from bear.initiation import InitRequest, shop_initiation, unknown_initiation
+from bear.post_call import parse_transcription
 from bear.seed import DEMO_REPAIR_ORDERS
 from bear.shops import LANGUAGE_NAMES, SHOP_ID_PATTERN, TOW_FALLBACK_REPLY, UNKNOWN_SHOP_ID, ShopConfig, load_shops
 from bear.store import SlotFull, Store
+from bear.webhook_signature import SignatureError, verify_signature
 
+POST_CALL_MAX_BYTES = 2 * 1024 * 1024  # transcription events only; leave "Send audio data" off
 DEFAULT_SHOPS_DIR = Path(__file__).resolve().parent.parent / "shops"
 
 
@@ -55,6 +59,7 @@ class Settings:
     shops_dir: str = str(DEFAULT_SHOPS_DIR)
     init_webhook_secret: str = ""
     init_webhook_secret_previous: str = ""
+    post_call_webhook_secret: str = ""
     tool_deadline_ms: int = 4000
     admin_user: str = "admin"
 
@@ -71,6 +76,7 @@ class Settings:
             tool_secret=os.getenv("TOOL_SECRET", ""),
             init_webhook_secret=os.getenv("INIT_WEBHOOK_SECRET", ""),
             init_webhook_secret_previous=os.getenv("INIT_WEBHOOK_SECRET_PREVIOUS", ""),
+            post_call_webhook_secret=os.getenv("POST_CALL_WEBHOOK_SECRET", ""),
             env=os.getenv("BEAR_ENV", ""),
             admin_user=os.getenv("ADMIN_USER", "admin"),
             admin_password=os.getenv("ADMIN_PASSWORD", ""),
@@ -532,6 +538,10 @@ def create_app() -> FastAPI:
             raise RuntimeError("INIT_WEBHOOK_SECRET_PREVIOUS must differ from TOOL_SECRET")
     if not settings.init_webhook_secret:
         logging.getLogger("bear").warning("INIT_WEBHOOK_SECRET is unset; the init webhook is open in dev")
+    if settings.post_call_webhook_secret in {settings.tool_secret, settings.init_webhook_secret} - {""}:
+        raise RuntimeError("POST_CALL_WEBHOOK_SECRET must differ from TOOL_SECRET and INIT_WEBHOOK_SECRET")
+    if not settings.post_call_webhook_secret:
+        logging.getLogger("bear").warning("POST_CALL_WEBHOOK_SECRET is unset; post-call summaries are disabled")
 
     if not re.fullmatch(SHOP_ID_PATTERN, settings.shop_id):
         raise RuntimeError("invalid SHOP_ID")
@@ -673,6 +683,45 @@ def create_app() -> FastAPI:
         else:
             reply = shop_initiation(shop, now)
         return JSONResponse(reply.model_dump(exclude_none=True))
+
+    @app.post("/elevenlabs/post-call")
+    async def elevenlabs_post_call(request: Request):
+        """Post-call webhook: keep a short, signed summary of each finished call (never the transcript)."""
+        if not settings.post_call_webhook_secret:
+            raise HTTPException(status_code=503, detail="post-call webhook disabled")
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > POST_CALL_MAX_BYTES:
+                raise HTTPException(status_code=413, detail="request body too large")
+        try:
+            verify_signature(
+                bytes(raw),
+                request.headers.get("elevenlabs-signature"),
+                settings.post_call_webhook_secret,
+                now=time.time(),
+            )
+        except SignatureError:
+            raise HTTPException(status_code=401, detail="bad signature") from None
+        try:
+            event = json.loads(raw)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid JSON body") from None
+        if not isinstance(event, dict) or not isinstance(event.get("type"), str):
+            raise HTTPException(status_code=400, detail="invalid event")
+        if event["type"] != "post_call_transcription":
+            return {"status": "ignored"}  # audio, call_initiation_failure, and future types
+        if not isinstance(event.get("data"), dict):
+            raise HTTPException(status_code=400, detail="invalid event")
+        try:
+            call = parse_transcription(event["data"])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid conversation_id") from None
+        shop_id = call.shop_id if call.shop_id in shops else UNKNOWN_SHOP_ID
+        request.state.bear_shop_id = shop_id
+        request.state.bear_conversation_id = call.fields["conversation_id"]
+        saved = await run_in_threadpool(store.save_call_summary, shop_id, **call.fields)
+        return {"status": "stored" if saved else "duplicate"}
 
     @app.post("/tools/book_appointment", dependencies=[Depends(check_secret)])
     def book_appointment(req: BookAppointment):
@@ -846,6 +895,15 @@ def create_app() -> FastAPI:
             b = "".join("<tr>" + "".join(td(c, r) for c in cols) + "</tr>" for r in rows)
             return f"<table><tr>{h}</tr>{b}</table>"
 
+        def call_row(row):
+            seconds = row["duration_secs"]
+            return {
+                **{key: "" if value is None else value for key, value in row.items()},
+                "duration": "" if seconds is None else f"{seconds // 60}:{seconds % 60:02}",
+            }
+
+        calls = [call_row(row) for row in db["call_summaries"]]
+
         return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(board_name), quote=True)} board</title>
     <style>body{{font-family:system-ui;margin:24px}}table{{border-collapse:collapse;margin-bottom:24px}}
     td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}
@@ -855,6 +913,7 @@ def create_app() -> FastAPI:
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
     <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "vehicle", "reason", "urgency", "callback_language", "conversation_id"])}
     <h2>Open repair orders</h2>{table(db["repair_orders"], ["ro_number", "customer_name", "vehicle", "status", "eta"])}
+    <h2>Recent calls</h2>{table(calls, ["started_at", "duration", "outcome", "title", "summary", "language", "conversation_id"])}
     </body></html>"""
 
     @app.post("/admin/reset")
