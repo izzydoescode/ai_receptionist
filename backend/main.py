@@ -37,7 +37,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from bear.alerts import log_staff_alert, warn_if_prod_log_only
+from bear.alerts import send_staff_alert, warn_if_prod_log_only
 from bear.db import check_schema, make_engine
 from bear.initiation import InitRequest, shop_initiation, unknown_initiation
 from bear.post_call import parse_transcription
@@ -769,16 +769,7 @@ def create_app() -> FastAPI:
                 "alternatives": next_slots(shop, max(dt, datetime.now(shop.tz))),
             }
         when = dt.strftime("%A %b %d at %I:%M %p").replace(" 0", " ")
-        log_staff_alert(
-            settings.alerts_mode,
-            settings.env,
-            "booking",
-            name=req.customer_name,
-            phone=req.phone,
-            vehicle=req.vehicle,
-            service=req.service,
-            when=when,
-        )
+        send_staff_alert(settings.alerts_mode, "booking", shop_id=shop.shop_id, public_id=appt["public_id"])
         return {
             "ok": True,
             "booked": True,
@@ -843,15 +834,7 @@ def create_app() -> FastAPI:
         fields = req.model_dump(exclude={"shop_id"})
         fields["destination"] = req.destination or shop.name
         tow = store.create_tow(shop.shop_id, **fields, status="dispatch_requested")
-        log_staff_alert(
-            settings.alerts_mode,
-            settings.env,
-            "tow",
-            name=req.customer_name,
-            phone=req.phone,
-            pickup_location=fields["pickup_location"],
-            issue=req.issue,
-        )
+        send_staff_alert(settings.alerts_mode, "tow", shop_id=shop.shop_id, public_id=tow["public_id"])
         if shop.features.tow_dispatch:
             msg = (
                 "I've gone ahead and logged the tow. A dispatcher will call you back "
@@ -876,15 +859,7 @@ def create_app() -> FastAPI:
                 return UNKNOWN_SHOP
             shop_id, staffed = shop.shop_id, shop.callback_languages
         m = store.create_message(shop_id, **req.model_dump(exclude={"shop_id"}))
-        log_staff_alert(
-            settings.alerts_mode,
-            settings.env,
-            "message",
-            name=req.caller_name,
-            phone=req.phone,
-            urgency=req.urgency,
-            reason=req.reason,
-        )
+        send_staff_alert(settings.alerts_mode, "message", shop_id=shop_id, public_id=m["public_id"])
         language = req.callback_language
         if language == "en":
             lang = ""
