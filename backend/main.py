@@ -37,6 +37,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
+from bear.admin import build_admin_router
 from bear.alerts import send_staff_alert, warn_if_prod_log_only
 from bear.db import check_schema, make_engine
 from bear.eta import describe_eta
@@ -46,6 +47,11 @@ from bear.seed import demo_repair_orders
 from bear.shops import LANGUAGE_NAMES, SHOP_ID_PATTERN, TOW_FALLBACK_REPLY, UNKNOWN_SHOP_ID, ShopConfig, load_shops
 from bear.store import SlotFull, Store
 from bear.validation import (
+    Name,
+    OptionalName,
+    OptionalText,
+    Phone,
+    Text,
     clean_text,
     integer_to_string,
     lowercase,
@@ -153,11 +159,6 @@ def normalize_name(value: str) -> str:
 # ---------- validation and transport ----------
 
 
-Name = Annotated[str, Field(min_length=1, max_length=80), BeforeValidator(clean_text)]
-Text = Annotated[str, Field(min_length=1, max_length=500), BeforeValidator(clean_text)]
-OptionalName = Annotated[str, Field(max_length=80), BeforeValidator(clean_text)]
-OptionalText = Annotated[str, Field(max_length=500), BeforeValidator(clean_text)]
-Phone = Annotated[str, BeforeValidator(normalize_phone)]
 Language = Annotated[Literal["en", "es", "fr", "ht"], BeforeValidator(lowercase)]
 Urgency = Annotated[Literal["low", "normal", "high"], BeforeValidator(lowercase)]
 
@@ -898,18 +899,36 @@ def create_app() -> FastAPI:
             }
 
         calls = [call_row(row) for row in db["call_summaries"]]
+        repair_orders_link = (
+            ""
+            if shop == UNKNOWN_SHOP_ID
+            else f'<p><a href="/admin/ros?shop={html.escape(shop, quote=True)}">Manage repair orders</a></p>'
+        )
 
         return f"""<html><head><meta http-equiv="refresh" content="3"><title>{html.escape(str(board_name), quote=True)} board</title>
     <style>body{{font-family:system-ui;margin:24px}}table{{border-collapse:collapse;margin-bottom:24px}}
     td,th{{border:1px solid #ccc;padding:6px 10px}}th{{background:#222;color:#fff}}
     th.standout{{background:#4a3b14}}td.urgency-high{{background:#f6c1c1;font-weight:700}}td.callback-other{{background:#ffe08a;font-weight:700}}</style></head><body>
     <h1>{html.escape(str(board_name), quote=True)}: AI receptionist live board</h1>
+    {repair_orders_link}
     <h2>Appointments</h2>{table(db["appointments"], ["public_id", "slot_start", "customer_name", "phone", "vehicle", "service", "language"])}
     <h2>Tow requests</h2>{table(db["tows"], ["public_id", "created_at", "customer_name", "phone", "pickup_location", "issue", "is_safe"])}
     <h2>Messages</h2>{table(db["messages"], ["public_id", "created_at", "caller_name", "phone", "vehicle", "reason", "urgency", "callback_language", "conversation_id"])}
     <h2>Open repair orders</h2>{table(db["repair_orders"], ["ro_number", "customer_name", "vehicle", "status", "eta"])}
     <h2>Recent calls</h2>{table(calls, ["started_at", "duration", "outcome", "title", "summary", "language", "conversation_id"])}
     </body></html>"""
+
+    app.include_router(
+        build_admin_router(
+            store=store,
+            shops=shops,
+            default_shop_id=settings.shop_id,
+            admin_password=settings.admin_password,
+            check_admin=check_admin,
+            status_labels=RO_STATUS_LABELS,
+            closed_status=CLOSED_STATUS,
+        )
+    )
 
     @app.post("/admin/reset")
     def reset(authorization: str | None = Header(default=None)):

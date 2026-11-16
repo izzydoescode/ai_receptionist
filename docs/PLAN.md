@@ -251,6 +251,14 @@ Acceptance: 12 or more scenarios pass. Each runs in under 1 s. Spanish scenarios
 
 Acceptance: the script runs with `--dry-run` and no key, the checklist exists, and a results table template is in the doc.
 
+## Phase F2: Go-live features (Nov 15 plan)
+
+### Task 16: Repair-order admin and spoken ETAs (done on `feat/repair-order-admin`)
+- Staff create, edit and close repair orders at `/admin/ros` (behind the admin login, with a CSRF token tied to the shop and an Origin check). Every change writes `repair_order.created` / `repair_order.updated` to `audit_events`. Marking an order `picked_up` closes it, and closed orders stop answering status lookups.
+- `repair_orders.eta_at` (migration 0005) holds the done-by time; the old `eta` text is kept as a note. `check_repair_status` says the time relative to the shop's day ("tomorrow by 3 PM") and adds `eta_past_due` and `estimate_updated`. A past-due or missing estimate tells the agent not to guess and to offer a message.
+- `check_repair_status` takes `caller_phone` from `system__caller_id` as the phone factor when the caller didn't give one.
+- *Later, not MVP:* this router (`bear/admin.py`) is where a dashboard (metrics from `call_summaries` and `audit_events`), customer and CRM views, and a paid estimator add-on would grow.
+
 ## Phase G: SMS confirmations (later, behind A2P 10DLC approval)
 
 ### Task 14: Twilio SMS confirmations behind a feature flag

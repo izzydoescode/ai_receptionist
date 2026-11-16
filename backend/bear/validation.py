@@ -3,6 +3,9 @@
 import re
 import unicodedata
 from datetime import date
+from typing import Annotated
+
+from pydantic import BeforeValidator, Field
 
 # ZWNJ and ZWJ are format characters but must be kept for Persian (and
 # similar scripts) and for emoji sequences.
@@ -67,3 +70,10 @@ def validate_date(value):
 
 def lowercase(value):
     return value.lower() if isinstance(value, str) else value
+
+
+Name = Annotated[str, Field(min_length=1, max_length=80), BeforeValidator(clean_text)]
+Text = Annotated[str, Field(min_length=1, max_length=500), BeforeValidator(clean_text)]
+OptionalName = Annotated[str, Field(max_length=80), BeforeValidator(clean_text)]
+OptionalText = Annotated[str, Field(max_length=500), BeforeValidator(clean_text)]
+Phone = Annotated[str, BeforeValidator(normalize_phone)]
