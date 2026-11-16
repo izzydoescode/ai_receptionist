@@ -41,6 +41,10 @@ curl http://localhost:8080/ready
 | `TOOL_SECRET` | `fly secrets set` | yes | Shared secret ElevenLabs sends in `X-Tool-Secret` on every `/tools/*` call. At least 32 characters. Store the same value as an ElevenLabs workspace secret (`tools/README.md`). |
 | `INIT_WEBHOOK_SECRET` | `fly secrets set` | yes | Shared secret ElevenLabs sends in `X-Init-Webhook-Secret` to `POST /elevenlabs/init`. At least 32 characters, and different from `TOOL_SECRET` (`docs/ELEVENLABS_INIT.md`). |
 | `INIT_WEBHOOK_SECRET_PREVIOUS` | `fly secrets set` (optional) | no | Previous init secret, also accepted during rotation so you can update ElevenLabs and the server in either order. If set, same 32-character and not-`TOOL_SECRET` rules. |
+| `POST_CALL_WEBHOOK_SECRET` | `fly secrets set` | for post-call summaries | The HMAC secret ElevenLabs shows when you create the post-call webhook (`docs/ELEVENLABS_POST_CALL.md`). If unset, `/elevenlabs/post-call` returns 503 and the app still starts. It must differ from the other secrets. |
+| `ALERTS_MODE` | `fly secrets set` (or `fly.toml` `[env]`) | no | `off`, `log` (default; nothing delivered) or `email`. Use `email` in production so staff actually hear about bookings, messages and tows. |
+| `ALERTS_EMAIL_API_KEY` | `fly secrets set` | with `ALERTS_MODE=email` | Resend API key. Startup fails in email mode without it. |
+| `ALERTS_EMAIL_FROM` | `fly secrets set` | with `ALERTS_MODE=email` | Sender on a domain verified in Resend, e.g. `Bear <alerts@your-domain>`. Recipients come from the shop file's `alerts.email`. |
 | `DATABASE_URL` | `fly secrets set` | yes on Fly | The Neon connection string, `postgresql://…?sslmode=require`. `postgres://` and `postgresql://` are turned into `postgresql+psycopg://` automatically. The image's default is `sqlite:////data/bear.db`. `create_app` refuses a `sqlite:` URL unless `BEAR_ENV=dev`, so a forgotten `DATABASE_URL` on Fly fails startup instead of writing a throwaway file. |
 | `ADMIN_PASSWORD` | `fly secrets set` | for `/admin` | HTTP Basic password for the board. If unset, `/admin` returns 503. |
 | `ADMIN_USER` | `fly secrets set` (optional) | no | HTTP Basic username. Default `admin`. |
@@ -50,7 +54,7 @@ curl http://localhost:8080/ready
 | `BEAR_MIGRATE_ON_BOOT` | `fly.toml` `[env]` = `0` | no | `1` runs `alembic upgrade head` on container start. Fly uses its release command instead. |
 | `FORWARDED_ALLOW_IPS` | `fly.toml` `[env]` = `*` | no | Which proxies uvicorn trusts for `X-Forwarded-*`. The image default is `127.0.0.1`. On Fly, only Fly's proxy reaches the app's port. |
 | `BEAR_ENV` | never | no | `dev` turns off the secret checks, enables `POST /admin/reset`, and is the only environment that may use a `sqlite:` `DATABASE_URL`. **Never set it in production.** |
-| `PUBLIC_BASE_URL` | not on the server | for `tools/make_tools.py` | The app's public URL, e.g. `https://bear-receptionist.fly.dev`. It's used on your machine to generate the tool configs. |
+| `PUBLIC_BASE_URL` | `fly secrets set` (optional) and on your machine | for `tools/make_tools.py` | The app's public URL, e.g. `https://bear-receptionist.fly.dev`. On your machine it generates the tool configs; on the server it adds the `/admin` link to alert emails. |
 
 ## Fly.io + Neon setup (when ready; not done yet)
 ### Neon
@@ -79,6 +83,8 @@ curl http://localhost:8080/ready
    ADMIN_PASSWORD=$ADMIN_PASSWORD
    EOF
    fly secrets set --stage DATABASE_URL="<Neon direct connection string>"
+   fly secrets set --stage POST_CALL_WEBHOOK_SECRET="<secret ElevenLabs shows for the post-call webhook>"
+   fly secrets set --stage ALERTS_MODE=email ALERTS_EMAIL_API_KEY="<Resend API key>" ALERTS_EMAIL_FROM="Bear <alerts@your-verified-domain>" PUBLIC_BASE_URL=https://bear-receptionist.fly.dev
    ```
    `--stage` stores them without restarting anything. Copy `TOOL_SECRET` and `INIT_WEBHOOK_SECRET` into ElevenLabs right away (step 6). Fly won't show them again, so if you lose them, set new ones. During a later rotation you can also set `INIT_WEBHOOK_SECRET_PREVIOUS` the same way so both secrets are accepted.
 4. Deploy: `fly deploy`. The release command runs `alembic upgrade head` against Neon first. Then one machine starts in `iad` and must pass the `/health` check.
@@ -88,9 +94,10 @@ curl http://localhost:8080/ready
 6. Point ElevenLabs at it:
    - Init webhook: `https://bear-receptionist.fly.dev/elevenlabs/init`, with secret header `X-Init-Webhook-Secret` (`docs/ELEVENLABS_INIT.md`).
    - Tools: run `PUBLIC_BASE_URL=https://bear-receptionist.fly.dev python tools/make_tools.py`, then follow `tools/README.md`. That includes the workspace secret that holds `TOOL_SECRET`.
+   - Post-call webhook: `https://bear-receptionist.fly.dev/elevenlabs/post-call` with HMAC authentication, transcription events only and audio off (`docs/ELEVENLABS_POST_CALL.md`). Put the secret it shows in `POST_CALL_WEBHOOK_SECRET`.
 
 ### Real shop files
-Real shop YAML (real names and numbers) must never go into this repo. Until the first pilot, the image ships only the demo shop. For a real shop:
+Real shop YAML (real names and numbers) must never go into this repo. The image ships only the demo shop, whose numbers are fictional. **The demo launch needs this step too:** the init webhook finds the shop by the dialed number, so copy `shops/vice-city-auto.yaml` and set `twilio_number` to your real Twilio number, `transfer_number` to the owner's cell, `voices` to your ElevenLabs voice ids, and `alerts.email` to the staff inbox. For any deployed shop file:
 1. `fly volumes create bear_data --region iad --size 1`, and add `[mounts] source = "bear_data"` / `destination = "/data"` to `fly.toml`.
 2. Copy the shop file in with `fly ssh sftp shell` (`put shop.yaml /data/shops/<shop_id>.yaml`).
 3. `fly secrets set SHOPS_DIR=/data/shops SHOP_ID=<shop_id>`. This restarts the app, which validates every file at startup.

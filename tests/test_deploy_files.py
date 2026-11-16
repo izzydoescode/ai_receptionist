@@ -74,7 +74,14 @@ def fly():
     return tomllib.loads(read("fly.toml"))
 
 
-SECRET_NAMES = ["TOOL_SECRET", "INIT_WEBHOOK_SECRET", "ADMIN_PASSWORD", "DATABASE_URL"]
+SECRET_NAMES = [
+    "TOOL_SECRET",
+    "INIT_WEBHOOK_SECRET",
+    "ADMIN_PASSWORD",
+    "DATABASE_URL",
+    "POST_CALL_WEBHOOK_SECRET",
+    "ALERTS_EMAIL_API_KEY",
+]
 
 
 def test_fly_app_is_always_on_in_the_east():
@@ -118,7 +125,13 @@ def env_vars_read_by_the_app():
 
 def test_deploy_doc_lists_every_env_var_the_app_reads():
     doc = read("docs/DEPLOY.md")
-    names = env_vars_read_by_the_app() | {"PUBLIC_BASE_URL", "BEAR_MIGRATE_ON_BOOT", "FORWARDED_ALLOW_IPS"}
+    names = env_vars_read_by_the_app() | {
+        "PUBLIC_BASE_URL",
+        "BEAR_MIGRATE_ON_BOOT",
+        "FORWARDED_ALLOW_IPS",
+        "ALERTS_EMAIL_API_KEY",
+        "ALERTS_EMAIL_FROM",
+    }
     assert {"TOOL_SECRET", "INIT_WEBHOOK_SECRET", "DATABASE_URL", "SHOPS_DIR"} <= names
     missing = sorted(name for name in names if f"`{name}`" not in doc)
     assert not missing, missing
