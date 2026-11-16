@@ -939,7 +939,6 @@ def create_app() -> FastAPI:
             store=store,
             shops=shops,
             default_shop_id=settings.shop_id,
-            admin_password=settings.admin_password,
             check_admin=check_admin,
             status_labels=RO_STATUS_LABELS,
             closed_status=CLOSED_STATUS,
