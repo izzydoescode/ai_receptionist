@@ -38,7 +38,7 @@ DEMO_REPAIR_ORDERS = [
         "eta": "Ready now",
         "balance_estimate": "$615",
         "ro_number": "1003",
-        "customer_name": "Mike O'Brien",
+        "customer_name": "Daniel Brooks",
     },
     {
         "phone": "+13055550104",
