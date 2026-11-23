@@ -2,6 +2,6 @@
 pytest
 pytest-cov
 httpx
-ruff==0.17.5
+ruff==0.17.6
 pip-audit==2.10.1
-pip-tools==7.6.2
+pip-tools==7.7.0
